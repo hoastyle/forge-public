@@ -6,6 +6,8 @@
 - Runtime registry: `ghcr.io/hoastyle/forge`
 - Release source of truth: Git tags and GitHub Releases in `hoastyle/forge`
 - Public users install the standalone CLI and connect to a Forge service; they do not clone the data repo
+- Operator usage lives in `docs/management/forge-operator-guide.md`
+- Self-hosted runtime usage lives in `docs/management/self-hosting.md`
 
 ## Maintainer Release Flow
 

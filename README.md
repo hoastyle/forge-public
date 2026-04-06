@@ -25,3 +25,12 @@ Forge is distributed from GitHub Releases and GHCR:
 - CLI downloads: `https://github.com/hoastyle/forge/releases`
 - Runtime image: `ghcr.io/hoastyle/forge`
 - Canonical user entrypoint: `forge ...`
+
+## Docs
+
+Use the public docs surface that matches your role:
+
+- `docs/management/forge-operator-guide.md`: use the published CLI against a configured Forge service
+- `docs/management/self-hosting.md`: run the published runtime image without the private data repo path
+- `docs/management/forge-release-distribution.md`: release, GHCR, and install contract
+- `.agents/skills/using-forge/SKILL.md`: AI-facing operator contract for tools that only have CLI + service access
