@@ -130,6 +130,11 @@ class PackagingTests(unittest.TestCase):
         for path in required_paths:
             self.assertTrue(path.exists(), "{0} should exist".format(path))
 
+        release_workflow = (repo_root / ".github" / "workflows" / "release.yml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("pattern: cli-*", release_workflow)
+
     def test_release_doc_mentions_ghcr_image(self):
         doc_path = REPO_ROOT / "docs" / "management" / "forge-release-distribution.md"
         text = doc_path.read_text(encoding="utf-8")

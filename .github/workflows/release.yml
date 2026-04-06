@@ -63,6 +63,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
+          pattern: cli-*
           path: dist/release-artifacts
       - name: Bundle release assets
         run: |
