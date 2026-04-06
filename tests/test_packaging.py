@@ -30,6 +30,34 @@ SANITIZED_RUNTIME_ENV = {
 
 
 class PackagingTests(unittest.TestCase):
+    def test_public_repo_excludes_private_internal_artifacts(self):
+        repo_root = REPO_ROOT
+
+        forbidden_paths = [
+            repo_root / "compose.deploy.yaml",
+            repo_root / "scripts" / "deploy",
+            repo_root / "docs" / "management" / "forge-howie-server-deployment.md",
+            repo_root / "docs" / "management" / "forge-llm-pipeline-v1.md",
+            repo_root / "docs" / "management" / "repository-conventions.md",
+            repo_root / "docs" / "management" / "CONTEXT.md",
+            repo_root / "docs" / "management" / "TODO.md",
+            repo_root / "docs" / "superpowers",
+            repo_root / ".serena",
+            repo_root / ".claude",
+            repo_root / ".continue",
+            repo_root / ".factory",
+            repo_root / "skills",
+            repo_root / "skills-lock.json",
+            repo_root / "CLAUDE.md",
+            repo_root / "CLAUDE_company.md",
+            repo_root / "CLAUDE_reference.md",
+            repo_root / "CODEX.md",
+            repo_root / "INDEX.md",
+        ]
+
+        for path in forbidden_paths:
+            self.assertFalse(path.exists(), "{0} must not exist in the public repo".format(path))
+
     def test_pyproject_exposes_forge_console_entrypoint(self):
         pyproject_path = REPO_ROOT / "pyproject.toml"
 
@@ -77,69 +105,10 @@ class PackagingTests(unittest.TestCase):
             repo_root / "scripts" / "release" / "install-public-cli.sh",
             repo_root / "scripts" / "release" / "render-homebrew-formula.sh",
             repo_root / "packaging" / "homebrew" / "forge.rb.tmpl",
-            repo_root / "docs" / "management" / "forge-release-distribution.md",
         ]
 
         for path in required_paths:
             self.assertTrue(path.exists(), "{0} should exist".format(path))
-
-    def test_howie_server_deploy_artifacts_exist(self):
-        repo_root = REPO_ROOT
-
-        required_paths = [
-            repo_root / "scripts" / "deploy" / "deploy_howie_server.sh",
-            repo_root / "docs" / "management" / "forge-howie-server-deployment.md",
-        ]
-
-        for path in required_paths:
-            self.assertTrue(path.exists(), "{0} should exist".format(path))
-
-    def test_howie_server_deploy_script_is_bash_parseable(self):
-        if shutil.which("bash") is None:
-            self.skipTest("bash is required for deploy script validation")
-
-        script_path = REPO_ROOT / "scripts" / "deploy" / "deploy_howie_server.sh"
-        result = subprocess.run(
-            ["bash", "-n", str(script_path)],
-            cwd=REPO_ROOT,
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-
-        self.assertEqual(result.returncode, 0, msg=result.stderr)
-
-    def test_howie_server_deploy_script_supports_local_image_transfer(self):
-        script_path = REPO_ROOT / "scripts" / "deploy" / "deploy_howie_server.sh"
-
-        text = script_path.read_text(encoding="utf-8")
-        self.assertIn("--build-local", text)
-        self.assertIn("docker save", text)
-        self.assertIn("docker load", text)
-
-    def test_howie_server_deploy_script_passes_proxy_to_local_build(self):
-        script_path = REPO_ROOT / "scripts" / "deploy" / "deploy_howie_server.sh"
-
-        text = script_path.read_text(encoding="utf-8")
-        self.assertIn("docker_build_args+=(--build-arg", text)
-        self.assertIn("HTTP_PROXY=${PROXY}", text)
-        self.assertIn("HTTPS_PROXY=${PROXY}", text)
-        self.assertIn("ALL_PROXY=${PROXY}", text)
-
-    def test_howie_server_deploy_script_retries_remote_health_checks(self):
-        script_path = REPO_ROOT / "scripts" / "deploy" / "deploy_howie_server.sh"
-
-        text = script_path.read_text(encoding="utf-8")
-        self.assertIn("for attempt in $(seq 1 30)", text)
-        self.assertIn("sleep 2", text)
-        self.assertIn("service failed readiness checks after", text)
-
-    def test_howie_server_doc_mentions_standard_deploy_script(self):
-        doc_path = REPO_ROOT / "docs" / "management" / "forge-howie-server-deployment.md"
-
-        text = doc_path.read_text(encoding="utf-8")
-        self.assertIn("scripts/deploy/deploy_howie_server.sh", text)
-        self.assertIn("--host howie_server", text)
 
     def test_go_public_cli_builds(self):
         if shutil.which("go") is None:
