@@ -188,8 +188,10 @@ class ForgeCliTests(unittest.TestCase):
             app_root = Path(tempdir) / "app"
             repo_root = Path(tempdir) / "repo"
             state_root = Path(tempdir) / "state"
-            with patch("automation.pipeline.service_api.create_app") as create_app:
-                with patch("uvicorn.run") as uvicorn_run:
+            with patch("automation.pipeline.cli._load_create_app") as load_create_app:
+                with patch("automation.pipeline.cli._load_uvicorn_run") as load_uvicorn_run:
+                    create_app = load_create_app.return_value
+                    uvicorn_run = load_uvicorn_run.return_value
                     exit_code = main(
                         [
                             "serve",
