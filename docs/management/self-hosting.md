@@ -6,7 +6,7 @@ Run a self-hosted Forge service with the published runtime image.
 
 Keep three concerns separate:
 
-- image/app root: code and runtime shipped in `ghcr.io/hoastyle/forge:<tag>`
+- image/app root: code and runtime shipped in `ghcr.io/hoastyle/forge-public:<tag>`
 - content root: `raw/`, `knowledge/`, `insights/`, and optional `.env`
 - state root: receipts, snapshots, traces, and jobs
 
@@ -21,7 +21,7 @@ docker run --rm -p 8000:8000 \
   -e FORGE_SERVER_TOKEN=change-me \
   -v "$PWD/repo:/var/lib/forge/repo" \
   -v "$PWD/state:/var/lib/forge/state" \
-  ghcr.io/hoastyle/forge:v0.2.0
+  ghcr.io/hoastyle/forge-public:v0.2.0
 ```
 
 Then connect with the public CLI:

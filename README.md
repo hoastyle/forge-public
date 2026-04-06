@@ -6,7 +6,7 @@ insight synthesis.
 ## Quick Start
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/hoastyle/forge/main/scripts/release/install-public-cli.sh | bash
+curl -fsSL https://raw.githubusercontent.com/hoastyle/forge-public/main/scripts/release/install-public-cli.sh | bash
 forge version
 forge login --server https://forge.example.com --token "$FORGE_SERVER_TOKEN"
 forge doctor
@@ -22,8 +22,8 @@ forge doctor
 
 Forge is distributed from GitHub Releases and GHCR:
 
-- CLI downloads: `https://github.com/hoastyle/forge/releases`
-- Runtime image: `ghcr.io/hoastyle/forge`
+- CLI downloads: `https://github.com/hoastyle/forge-public/releases`
+- Runtime image: `ghcr.io/hoastyle/forge-public`
 - Canonical user entrypoint: `forge ...`
 
 ## Docs

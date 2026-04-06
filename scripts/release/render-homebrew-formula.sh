@@ -17,7 +17,7 @@ escape_sed_replacement() {
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/../.." && pwd)"
 template_path="${repo_root}/packaging/homebrew/forge.rb.tmpl"
-repo="hoastyle/forge"
+repo="hoastyle/forge-public"
 version=""
 archive_sha256=""
 archive_url=""

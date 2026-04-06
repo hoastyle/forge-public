@@ -9,7 +9,7 @@ Usage: scripts/release/install-public-cli.sh [--version <tag>] [--install-dir <d
 Install the standalone Forge public CLI from a GitHub release archive.
 
 Defaults:
-  repo:        hoastyle/forge
+  repo:        hoastyle/forge-public
   install-dir: ~/.local/bin
   version:     latest GitHub release tag
 EOF
@@ -73,7 +73,7 @@ normalize_arch() {
   esac
 }
 
-repo="${FORGE_RELEASE_REPO:-hoastyle/forge}"
+repo="${FORGE_RELEASE_REPO:-hoastyle/forge-public}"
 base_url="${FORGE_RELEASE_BASE_URL:-}"
 install_dir="${FORGE_INSTALL_DIR:-$HOME/.local/bin}"
 version="${FORGE_VERSION:-}"
