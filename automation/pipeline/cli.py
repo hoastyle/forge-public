@@ -349,21 +349,31 @@ def _logout() -> int:
     return 0
 
 
+def _load_create_app():
+    from .service_api import create_app
+
+    return create_app
+
+
+def _load_uvicorn_run():
+    try:
+        import uvicorn
+    except ImportError as exc:
+        raise RuntimeError("uvicorn is required for `forge serve`; install with `uv sync --extra server`") from exc
+
+    return uvicorn.run
+
+
 def _serve(args) -> int:
     repo_root = Path(args.repo_root or os.environ.get("FORGE_SERVICE_REPO_ROOT", "."))
     app_root = Path(args.app_root or os.environ.get("FORGE_SERVICE_APP_ROOT", repo_root))
     state_root = Path(args.state_root or os.environ.get("FORGE_STATE_ROOT", repo_root / "state"))
     bearer_token = (args.token or os.environ.get("FORGE_SERVER_TOKEN", "")).strip()
 
-    from .service_api import create_app
-
-    try:
-        import uvicorn
-    except ImportError as exc:
-        raise RuntimeError("uvicorn is required for `forge serve`; install with `uv sync --extra server`") from exc
-
+    create_app = _load_create_app()
+    uvicorn_run = _load_uvicorn_run()
     app = create_app(repo_root=repo_root, state_root=state_root, bearer_token=bearer_token, app_root=app_root)
-    uvicorn.run(app, host=args.host, port=args.port)
+    uvicorn_run(app, host=args.host, port=args.port)
     return 0
 
 
