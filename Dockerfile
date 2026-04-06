@@ -1,4 +1,5 @@
 FROM python:3.13-slim
+COPY --from=ghcr.io/astral-sh/uv:0.7.2 /uv /uvx /bin/
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
@@ -10,8 +11,7 @@ WORKDIR /app
 COPY pyproject.toml uv.lock README.md /app/
 COPY automation /app/automation
 
-RUN pip install --no-cache-dir uv \
-    && uv sync --frozen --no-dev --extra server --extra llm
+RUN uv sync --frozen --no-dev --extra server --extra llm
 
 EXPOSE 8000
 

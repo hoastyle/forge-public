@@ -121,6 +121,21 @@ class PackagingTests(unittest.TestCase):
         for path in required_paths:
             self.assertTrue(path.exists(), "{0} should exist".format(path))
 
+    def test_public_repo_has_release_workflows(self):
+        repo_root = REPO_ROOT
+        required_paths = [
+            repo_root / ".github" / "workflows" / "ci.yml",
+            repo_root / ".github" / "workflows" / "release.yml",
+        ]
+        for path in required_paths:
+            self.assertTrue(path.exists(), "{0} should exist".format(path))
+
+    def test_release_doc_mentions_ghcr_image(self):
+        doc_path = REPO_ROOT / "docs" / "management" / "forge-release-distribution.md"
+        text = doc_path.read_text(encoding="utf-8")
+        self.assertIn("ghcr.io/hoastyle/forge", text)
+        self.assertIn("GitHub Release", text)
+
     def test_go_public_cli_builds(self):
         if shutil.which("go") is None:
             self.skipTest("go is required for public CLI build validation")

@@ -237,7 +237,20 @@ validate_file() {
 while IFS= read -r file; do
     [ -n "$file" ] || continue
     validate_file "$file"
-done < <(find raw knowledge insights -name '*.md' -type f | sort)
+done < <(
+    search_roots=()
+    for root in raw knowledge insights; do
+        if [ -d "$root" ]; then
+            search_roots+=("$root")
+        fi
+    done
+
+    if [ "${#search_roots[@]}" -eq 0 ]; then
+        exit 0
+    fi
+
+    find "${search_roots[@]}" -name '*.md' -type f | sort
+)
 
 if [ "$errors" -gt 0 ]; then
     echo "Provenance validation failed: $errors error(s) across $checked file(s)."
