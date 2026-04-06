@@ -54,8 +54,8 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/hoastyle/forge:${{ github.ref_name }}
-            ghcr.io/hoastyle/forge:sha-${{ github.sha }}
+            ghcr.io/hoastyle/forge-public:${{ github.ref_name }}
+            ghcr.io/hoastyle/forge-public:sha-${{ github.sha }}
 
   publish-release:
     needs: [build-cli, publish-image]

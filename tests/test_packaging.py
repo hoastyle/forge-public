@@ -133,7 +133,7 @@ class PackagingTests(unittest.TestCase):
     def test_release_doc_mentions_ghcr_image(self):
         doc_path = REPO_ROOT / "docs" / "management" / "forge-release-distribution.md"
         text = doc_path.read_text(encoding="utf-8")
-        self.assertIn("ghcr.io/hoastyle/forge", text)
+        self.assertIn("ghcr.io/hoastyle/forge-public", text)
         self.assertIn("GitHub Release", text)
 
     def test_go_public_cli_builds(self):
