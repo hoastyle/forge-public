@@ -1,0 +1,22 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "forge"
+version = "0.1.0"
+description = "Personal knowledge distillation and insight pipeline."
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = []
+
+[project.optional-dependencies]
+llm = ["litellm"]
+proxy = ["socksio"]
+server = ["fastapi>=0.115,<1", "uvicorn>=0.30,<1", "httpx>=0.27,<1"]
+
+[project.scripts]
+forge = "automation.pipeline.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["automation"]

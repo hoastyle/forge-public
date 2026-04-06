@@ -1,0 +1,23 @@
+class Forge < Formula
+  desc "Public CLI for the Forge knowledge pipeline service"
+  homepage "https://github.com/hoastyle/forge"
+  url "__ARCHIVE_URL__"
+  sha256 "__ARCHIVE_SHA256__"
+  version "__VERSION__"
+  depends_on "go" => :build
+
+  def install
+    ldflags = %W[
+      -s -w
+      -X main.version=#{version}
+      -X main.commit=homebrew
+      -X main.buildDate=homebrew
+    ]
+    system "go", "build", *std_go_args(ldflags: ldflags), "./cmd/forge"
+  end
+
+  test do
+    output = shell_output("#{bin}/forge version")
+    assert_match version.to_s, output
+  end
+end

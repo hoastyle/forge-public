@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "profiles": {
+    "writer_cheap": {
+      "model": "openai/gpt-5.4",
+      "temperature": 0.1
+    },
+    "writer_mid": {
+      "model": "openai/gpt-5.4",
+      "temperature": 0.2
+    },
+    "judge_mid": {
+      "model": "openai/gpt-5.4",
+      "temperature": 0.0
+    },
+    "judge_strong": {
+      "model": "openai/gpt-5.4",
+      "temperature": 0.0
+    }
+  },
+  "runtime": {
+    "knowledge": {
+      "writer_profile": "writer_cheap",
+      "critic_profile": "judge_mid",
+      "judge_profile": "judge_mid",
+      "min_chars": 80,
+      "min_judge_score": 0.82,
+      "status_on_fail": "draft"
+    },
+    "insight": {
+      "writer_profile": "writer_cheap",
+      "critic_profile": "judge_mid",
+      "judge_profile": "judge_mid",
+      "min_evidence": 2,
+      "min_judge_score": 0.88,
+      "status_on_fail": "draft"
+    }
+  },
+  "prompts": {
+    "knowledge_writer": {
+      "domain_appendix": {
+        "network": ""
+      }
+    }
+  }
+}
