@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "allowed_ops": [
+    "add",
+    "replace"
+  ],
+  "required_fields": [
+    "op",
+    "path",
+    "value",
+    "reason"
+  ],
+  "paths": {
+    "/runtime/insight/min_evidence": {
+      "type": "integer",
+      "ops": [
+        "replace"
+      ],
+      "minimum": 2
+    },
+    "/runtime/insight/judge_profile": {
+      "type": "string",
+      "ops": [
+        "replace"
+      ],
+      "minLength": 1
+    },
+    "/runtime/knowledge/writer_profile": {
+      "type": "string",
+      "ops": [
+        "replace"
+      ],
+      "minLength": 1
+    },
+    "/prompts/knowledge_writer/domain_appendix/network": {
+      "type": "string",
+      "ops": [
+        "add",
+        "replace"
+      ],
+      "minLength": 1
+    }
+  }
+}

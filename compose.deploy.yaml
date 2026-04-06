@@ -1,0 +1,28 @@
+services:
+  forge:
+    build:
+      context: .
+    command:
+      - python
+      - -m
+      - automation.pipeline
+      - serve
+      - --app-root
+      - /app
+      - --repo-root
+      - /var/lib/forge/repo
+      - --state-root
+      - /var/lib/forge/state
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+    environment:
+      FORGE_SERVER_TOKEN: ${FORGE_SERVER_TOKEN:-}
+    env_file:
+      - .env
+    ports:
+      - "${FORGE_PUBLIC_PORT:-18080}:8000"
+    volumes:
+      - ./data/repo:/var/lib/forge/repo
+      - ./data/state:/var/lib/forge/state

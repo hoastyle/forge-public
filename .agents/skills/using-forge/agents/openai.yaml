@@ -1,0 +1,4 @@
+interface:
+  display_name: "Using Forge"
+  short_description: "Operate Forge through the public CLI and configured Forge service"
+  default_prompt: "Use $using-forge to capture notes, review queue state, promote raw material, synthesize insights, inspect receipts, and poll detached Forge jobs."
