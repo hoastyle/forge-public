@@ -71,8 +71,9 @@ class PackagingTests(unittest.TestCase):
         gitignore_path = REPO_ROOT / ".gitignore"
 
         text = gitignore_path.read_text(encoding="utf-8")
-        self.assertIn("/forge", text)
-        self.assertIn("/forge.exe", text)
+        entries = {line.strip() for line in text.splitlines()}
+        self.assertIn("/forge", entries)
+        self.assertIn("/forge.exe", entries)
 
     def test_env_example_defaults_litellm_to_local_model_cost_map(self):
         env_example_path = REPO_ROOT / ".env.example"
