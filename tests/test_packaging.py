@@ -67,6 +67,13 @@ class PackagingTests(unittest.TestCase):
         self.assertIn("[project.scripts]", text)
         self.assertIn('forge = "automation.pipeline.cli:main"', text)
 
+    def test_gitignore_excludes_repo_root_go_build_artifacts(self):
+        gitignore_path = REPO_ROOT / ".gitignore"
+
+        text = gitignore_path.read_text(encoding="utf-8")
+        self.assertIn("/forge", text)
+        self.assertIn("/forge.exe", text)
+
     def test_env_example_defaults_litellm_to_local_model_cost_map(self):
         env_example_path = REPO_ROOT / ".env.example"
 
