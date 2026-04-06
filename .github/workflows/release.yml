@@ -1,0 +1,77 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build-cli:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.3"
+      - name: Build archives
+        env:
+          FORGE_BUILD_TARGETS: ${{ matrix.goos }}/${{ matrix.goarch }}
+        run: |
+          scripts/release/build-public-cli.sh "${GITHUB_REF_NAME}" dist/public
+          mv dist/public/checksums.txt "dist/public/checksums-${{ matrix.goos }}-${{ matrix.goarch }}.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/public/*
+
+  publish-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/hoastyle/forge:${{ github.ref_name }}
+            ghcr.io/hoastyle/forge:sha-${{ github.sha }}
+
+  publish-release:
+    needs: [build-cli, publish-image]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist/release-artifacts
+      - name: Bundle release assets
+        run: |
+          mkdir -p dist/release-bundle
+          find dist/release-artifacts -type f -name 'forge_*.tar.gz' -exec cp {} dist/release-bundle/ \;
+          find dist/release-artifacts -type f -name 'checksums-*.txt' -print0 \
+            | sort -z \
+            | xargs -0 cat > dist/release-bundle/checksums.txt
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/release-bundle/*
+          generate_release_notes: true

@@ -17,3 +17,11 @@ forge doctor
 - This repository is public runtime and distribution code.
 - It does not contain production `raw/`, `knowledge/`, or `insights`.
 - Private data lives in a separate `forge-data` repository that consumes published images.
+
+## Distribution
+
+Forge is distributed from GitHub Releases and GHCR:
+
+- CLI downloads: `https://github.com/hoastyle/forge/releases`
+- Runtime image: `ghcr.io/hoastyle/forge`
+- Canonical user entrypoint: `forge ...`
