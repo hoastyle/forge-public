@@ -72,6 +72,9 @@ class PackagingTests(unittest.TestCase):
 
         text = gitignore_path.read_text(encoding="utf-8")
         entries = {line.strip() for line in text.splitlines()}
+        self.assertIn(".env", entries)
+        self.assertIn(".env.*", entries)
+        self.assertIn("!.env.example", entries)
         self.assertIn("/forge", entries)
         self.assertIn("/forge.exe", entries)
 
