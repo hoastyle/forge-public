@@ -77,6 +77,7 @@ to the Forge repository or its documents. The authoritative command list lives i
   - dry-run receipts expose the previewed batch
   - confirmed execution receipts link back through `confirmed_from_receipt_ref`
   - result items expose publication metadata plus `last_receipt_ref`
+- `promote-raw` replies expose publication metadata plus `last_receipt_ref` for the promoted document so the command itself reports the latest durable state.
 - For `synthesize-insights`, use the insight receipt as the execution contract:
   - dry-run receipts expose `evidence_refs`, `evidence_manifest`, and `evidence_trace_ref`
   - confirmed execution receipts link back through `confirmed_from_receipt_ref`

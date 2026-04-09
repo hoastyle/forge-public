@@ -52,6 +52,8 @@ forge promote-ready --initiator codex --dry-run --limit 5
 
 This writes a preview receipt that can be reused exactly.
 
+The preview receipt and the confirmed promotion both surface publication metadata and `last_receipt_ref` for every promoted document so the receipt itself documents the published state.
+
 ## Confirm Ready Promotion
 
 ```bash
