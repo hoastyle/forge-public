@@ -263,9 +263,12 @@ class ForgeAppTests(unittest.TestCase):
     def tearDown(self):
         self.tempdir.cleanup()
 
-    def _write_knowledge_fixture(self, relative_path, title, tags, status="active", body=None):
+    def _write_knowledge_fixture(self, relative_path, title, tags, status="active", body=None, knowledge_kind=None):
         path = self.repo_root / relative_path
         path.parent.mkdir(parents=True, exist_ok=True)
+        knowledge_kind_line = ""
+        if knowledge_kind is not None:
+            knowledge_kind_line = f"knowledge_kind: {knowledge_kind}\n"
         path.write_text(
             (
                 "---\n"
@@ -274,6 +277,7 @@ class ForgeAppTests(unittest.TestCase):
                 "updated: 2026-04-04\n"
                 f"tags: [{', '.join(tags)}]\n"
                 f"status: {status}\n"
+                f"{knowledge_kind_line}"
                 "reuse_count: 0\n"
                 "derived_from: [raw/captures/source.md]\n"
                 "---\n\n"
@@ -889,6 +893,33 @@ class ForgeAppTests(unittest.TestCase):
         else:
             self.assertIsInstance(receipt.excluded_reason, str)
         self.assertEqual(receipt.last_receipt_ref, receipt.receipt_ref)
+
+    def test_promote_raw_exposes_inferred_knowledge_kind(self):
+        from automation.pipeline.app import ForgeApp
+
+        self._write_raw_fixture(
+            "raw/captures/knowledge-kind.md",
+            "Knowledge kind raw",
+            ["network", "dns"],
+            "manual note",
+            (
+                "## Context\n\nThe gateway reboot was followed by fake DNS answers.\n\n"
+                "## Root Cause\n\nThe upstream resolver injected fake-ip ranges.\n\n"
+                "## Fix Steps\n\n- Override the resolver.\n"
+                "- Restart the affected service.\n\n"
+                "## Verification\n\n- Public domains resolve to public IPs.\n"
+            ),
+        )
+
+        app = ForgeApp(self.repo_root)
+        receipt = app.promote_raw("raw/captures/knowledge-kind.md", initiator="codex")
+        payload = app.read_knowledge_status(receipt.knowledge_ref)
+
+        self.assertEqual(receipt.status, "success")
+        self.assertEqual(receipt.knowledge_kind, "heuristic")
+        self.assertEqual(payload["knowledge_kind"], "heuristic")
+        knowledge_text = (self.repo_root / receipt.knowledge_ref).read_text(encoding="utf-8")
+        self.assertIn("knowledge_kind: heuristic", knowledge_text)
 
     def test_read_knowledge_status_returns_last_receipt_ref(self):
         from automation.pipeline.app import ForgeApp
@@ -2263,6 +2294,44 @@ class ForgeAppTests(unittest.TestCase):
                 "knowledge/troubleshooting/gateway-relay.md",
                 "knowledge/troubleshooting/container-resolver.md",
             },
+        )
+
+    def test_explain_insight_exposes_reference_kind_exclusions(self):
+        from automation.pipeline.app import ForgeApp
+
+        self._write_knowledge_fixture(
+            "knowledge/troubleshooting/gateway-dns.md",
+            "Gateway DNS repair",
+            ["network", "dns"],
+            body="The gateway DNS resolver injected fake-ip answers.",
+        )
+        self._write_knowledge_fixture(
+            "knowledge/troubleshooting/container-dns.md",
+            "Container DNS repair",
+            ["network", "dns"],
+            body="The container inherited the poisoned resolver from the gateway.",
+        )
+        self._write_knowledge_fixture(
+            "knowledge/tools/dns-reference.md",
+            "DNS reference",
+            ["network", "dns", "reference"],
+            body="External reference material about DNS operations.",
+            knowledge_kind="reference",
+        )
+
+        app = ForgeApp(self.repo_root, insight_client=GenericInsightInterfaceClient())
+        receipt = app.synthesize_insights(initiator="codex")
+        explanation = app.explain_insight_receipt(receipt.receipt_ref)
+
+        self.assertEqual(receipt.status, "success")
+        excluded_by_path = {item["path"]: item for item in explanation["excluded_documents"]}
+        self.assertEqual(
+            excluded_by_path["knowledge/tools/dns-reference.md"]["knowledge_kind"],
+            "reference",
+        )
+        self.assertEqual(
+            excluded_by_path["knowledge/tools/dns-reference.md"]["excluded_reason"],
+            "knowledge_kind_reference",
         )
 
     def test_synthesize_insights_prefers_cohesive_component_over_broader_tag_overlap(self):

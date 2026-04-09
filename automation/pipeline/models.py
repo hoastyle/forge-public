@@ -178,6 +178,7 @@ class RawPromotionReceipt:
     initiator: str
     raw_ref: str
     knowledge_ref: Optional[str] = None
+    knowledge_kind: Optional[str] = None
     candidate_ref: Optional[str] = None
     critic_ref: Optional[str] = None
     judge_ref: Optional[str] = None

@@ -380,6 +380,7 @@ class ForgeServiceApiTests(unittest.TestCase):
             self.assertEqual(payload["publication_status"], "active")
             self.assertEqual(payload["judge_decision"], "publish")
             self.assertTrue(payload["eligible_for_insights"])
+            self.assertEqual(payload["knowledge_kind"], "heuristic")
 
     def test_service_explains_insight_receipt(self):
         try:
@@ -438,6 +439,8 @@ class ForgeServiceApiTests(unittest.TestCase):
             self.assertIn("selected_paths", payload)
             self.assertIn("candidate_clusters", payload)
             self.assertIn("excluded_documents", payload)
+            if payload["excluded_documents"]:
+                self.assertIn("knowledge_kind", payload["excluded_documents"][0])
 
     def test_service_receipt_returns_404_for_unknown_selector(self):
         try:

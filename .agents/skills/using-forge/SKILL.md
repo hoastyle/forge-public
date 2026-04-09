@@ -17,8 +17,8 @@ to the Forge repository or its documents. The authoritative command list lives i
 - Public entrypoint: `forge ...`
 - Configure the target service with `forge login --server <url> --token <token>`, or with `FORGE_SERVER` and `FORGE_TOKEN`.
 - Use `forge receipt get <selector>` and `forge job get <job_id>` before claiming what happened.
-- Use `forge knowledge get <knowledge_ref>` to inspect publication state; the response includes the publication state plus `last_receipt_ref` so you can trace the latest durable receipt before issuing another mutation.
-- Use `forge explain insight <receipt_ref>` to inspect evidence selection and exclusions for one insight receipt.
+- Use `forge knowledge get <knowledge_ref>` to inspect publication state; the response includes `knowledge_kind`, the publication state, and `last_receipt_ref` so you can trace the latest durable receipt before issuing another mutation.
+- Use `forge explain insight <receipt_ref>` to inspect evidence selection and exclusions for one insight receipt, including `knowledge_kind` and `excluded_reason` for excluded documents.
 - `initiator` is provenance only. Allowed values are `manual`, `codex`, `claude-code`, `openclaw`, and `ci`.
 - trigger semantics remain explicit:
   - `inject` without `--promote-knowledge` writes `snapshot + raw + inject receipt` only.
@@ -77,13 +77,14 @@ to the Forge repository or its documents. The authoritative command list lives i
   - dry-run receipts expose the previewed batch
   - confirmed execution receipts link back through `confirmed_from_receipt_ref`
   - result items expose publication metadata plus `last_receipt_ref`
-- `promote-raw` replies expose publication metadata plus `last_receipt_ref` for the promoted document so the command itself reports the latest durable state.
+- `promote-raw` replies expose `knowledge_kind`, publication metadata, and `last_receipt_ref` for the promoted document so the command itself reports the latest durable state.
 - For `synthesize-insights`, use the insight receipt as the execution contract:
   - dry-run receipts expose `evidence_refs`, `evidence_manifest`, and `evidence_trace_ref`
   - confirmed execution receipts link back through `confirmed_from_receipt_ref`
 - For retry-safe automation, pin `--operation-id <id>` on remote mutations and reuse the exact same value on retries.
 - For insight synthesis, inspect `evidence_trace_ref` to understand evidence filtering, document `quality_score` /
   `quality_signals`, component `quality_score`, and the final selection.
+- `reference` knowledge is retrieval-only and should appear under `excluded_documents` rather than as synthesis evidence.
 - Remote mutations (`inject`, `promote-raw`, `promote-ready`, `synthesize-insights`) default to detached jobs; the usual completion loop is `forge job get <job_id>` followed by `forge receipt get <receipt_ref>`. Callers use `--wait` for the synchronous path and may continue specifying `--detach` only when they need to force older caller semantics.
 
 ## References

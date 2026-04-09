@@ -389,6 +389,7 @@ class ForgeCliTests(unittest.TestCase):
             self.assertEqual(payload["status"], "success")
             self.assertEqual(payload["knowledge_ref"], "knowledge/troubleshooting/example.md")
             self.assertEqual(payload["publication_status"], "active")
+            self.assertEqual(payload["knowledge_kind"], "heuristic")
 
     def test_cli_inject_command_writes_receipt_json(self):
         from automation.pipeline.cli import main
@@ -1312,6 +1313,8 @@ class ForgeCliTests(unittest.TestCase):
             self.assertIn("selected_paths", payload)
             self.assertIn("candidate_clusters", payload)
             self.assertIn("excluded_documents", payload)
+            if payload["excluded_documents"]:
+                self.assertIn("knowledge_kind", payload["excluded_documents"][0])
 
     def test_cli_replay_failure_command_replays_archived_case(self):
         from automation.pipeline.app import ForgeApp

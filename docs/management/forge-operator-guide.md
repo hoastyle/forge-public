@@ -73,8 +73,8 @@ forge promote-ready --initiator manual --dry-run --limit 5
 forge promote-ready --initiator manual --confirm-receipt state/receipts/ready_promote/<preview>.json
 ```
 
-The preview receipt and the confirmed promotion both expose the publication metadata and `last_receipt_ref` for each promoted document so you can track which receipt sealed the latest published state.
-Single-item `promote-raw` replies expose the same publication metadata and `last_receipt_ref`, so the command already reports the latest durable state for that document without a separate reconciliation step.
+The preview receipt and the confirmed promotion both expose `knowledge_kind`, publication metadata, and `last_receipt_ref` for each promoted document so you can track which receipt sealed the latest published state.
+Single-item `promote-raw` replies expose the same `knowledge_kind`, publication metadata, and `last_receipt_ref`, so the command already reports the latest durable state for that document without a separate reconciliation step.
 
 Run insight synthesis explicitly:
 
@@ -109,13 +109,15 @@ Inspect one knowledge document's publication state:
 forge knowledge get knowledge/troubleshooting/example.md
 ```
 
-`forge knowledge get` now returns publication metadata plus `last_receipt_ref`, so you can jump directly to the latest durable receipt without manually scanning receipt history.
+`forge knowledge get` now returns `knowledge_kind`, publication metadata, and `last_receipt_ref`, so you can jump directly to the latest durable receipt without manually scanning receipt history.
 
 Inspect why one insight synthesis selected or excluded evidence:
 
 ```bash
 forge explain insight state/receipts/insights/<id>.json
 ```
+
+`forge explain insight` now exposes `excluded_documents` with both `knowledge_kind` and `excluded_reason`, which makes it obvious when retrieval-only reference material was intentionally kept out of synthesis evidence.
 
 ## Safe Retry
 

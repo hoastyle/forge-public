@@ -935,6 +935,7 @@ class ForgeApp:
             "knowledge_ref": knowledge_ref,
             "title": str(doc.get("title") or Path(knowledge_ref).stem),
             "tags": list(doc.get("tags") or []),
+            "knowledge_kind": publication.knowledge_kind,
             "publication_status": publication.publication_status,
             "judge_score": publication.judge_score,
             "judge_decision": publication.judge_decision,
@@ -1001,6 +1002,7 @@ class ForgeApp:
                     initiator=initiator,
                     raw_ref=relative_raw_ref,
                     knowledge_ref=existing_knowledge_refs[0],
+                    knowledge_kind=publication.knowledge_kind if publication else None,
                     publication_status=publication.publication_status if publication else None,
                     judge_score=publication.judge_score if publication else None,
                     judge_decision=publication.judge_decision if publication else None,
@@ -1060,6 +1062,7 @@ class ForgeApp:
                 initiator=initiator,
                 raw_ref=relative_raw_ref,
                 knowledge_ref=result["knowledge_ref"],
+                knowledge_kind=publication.knowledge_kind if publication else None,
                 candidate_ref=result["candidate_ref"],
                 critic_ref=result["critic_ref"],
                 judge_ref=result["judge_ref"],
@@ -1099,6 +1102,7 @@ class ForgeApp:
                             initiator=initiator,
                             raw_ref=raw_ref,
                             knowledge_ref=existing_knowledge_refs[0],
+                            knowledge_kind=publication.knowledge_kind if publication else None,
                             publication_status=publication.publication_status if publication else None,
                             judge_score=publication.judge_score if publication else None,
                             judge_decision=publication.judge_decision if publication else None,
@@ -1693,11 +1697,17 @@ class ForgeApp:
 
         category = self._pick_knowledge_category(candidate["tags"] or tags)
         knowledge_rel = self._allocate_knowledge_path(candidate["title"], category)
+        knowledge_kind = self._resolve_knowledge_kind(
+            knowledge_ref=knowledge_rel,
+            raw_ref=raw_ref,
+            tags=candidate["tags"] or tags,
+        )
         knowledge_doc = self._render_knowledge_document(
             candidate=candidate,
             critique=critique,
             judge=judge,
             status=status,
+            knowledge_kind=knowledge_kind,
             raw_ref=raw_ref,
             input_kind=input_kind,
             source_ref=source_ref,
@@ -2061,6 +2071,7 @@ class ForgeApp:
         critique: Dict[str, Any],
         judge: Dict[str, Any],
         status: str,
+        knowledge_kind: str,
         raw_ref: str,
         input_kind: str,
         source_ref: str,
@@ -2084,6 +2095,7 @@ class ForgeApp:
             "updated: {0}".format(self.clock().isoformat()),
             "tags: {0}".format(self._yaml_list(tags)),
             "status: {0}".format(status),
+            "knowledge_kind: {0}".format(knowledge_kind),
             "judge_score: {0:.2f}".format(judge["score"]),
             "judge_decision: {0}".format(judge["decision"]),
             "release_reason: {0}".format(judge["reason"]),
@@ -2288,10 +2300,51 @@ class ForgeApp:
         evaluation = self._evaluate_knowledge_doc_for_insights(doc)
         return build_knowledge_publication_status(
             knowledge_ref=knowledge_ref,
+            knowledge_kind=self._resolve_knowledge_kind(
+                explicit_kind=doc.get("knowledge_kind"),
+                knowledge_ref=doc.get("path"),
+                tags=doc.get("tags"),
+            ),
             document=doc,
             excluded_reason=evaluation["excluded_reason"],
             last_receipt_ref=self._find_latest_receipt_ref_for_knowledge(knowledge_ref),
         )
+
+    def _normalize_knowledge_kind(self, value: object) -> Optional[str]:
+        normalized = str(value or "").strip().lower()
+        if normalized in {"reference", "workflow", "incident", "heuristic", "pattern", "correction"}:
+            return normalized
+        return None
+
+    def _resolve_knowledge_kind(
+        self,
+        *,
+        explicit_kind: object = None,
+        knowledge_ref: object = None,
+        raw_ref: object = None,
+        tags: object = None,
+    ) -> str:
+        explicit = self._normalize_knowledge_kind(explicit_kind)
+        if explicit is not None:
+            return explicit
+
+        normalized_tags = {str(tag).strip().lower() for tag in (tags or []) if str(tag).strip()}
+        knowledge_path = str(knowledge_ref or "").strip().lower()
+        raw_path = str(raw_ref or "").strip().lower()
+
+        if raw_path.startswith("raw/references/") or knowledge_path.startswith("knowledge/reference/") or "reference" in normalized_tags:
+            return "reference"
+        if "incident" in normalized_tags:
+            return "incident"
+        if "heuristic" in normalized_tags:
+            return "heuristic"
+        if "pattern" in normalized_tags:
+            return "pattern"
+        if knowledge_path.startswith("knowledge/workflow/") or "workflow" in normalized_tags:
+            return "workflow"
+        if knowledge_path.startswith("knowledge/tools/"):
+            return "reference"
+        return "heuristic"
 
     def _find_latest_receipt_ref_for_knowledge(self, knowledge_ref: str) -> Optional[str]:
         matches: List[Path] = []
@@ -2309,6 +2362,11 @@ class ForgeApp:
 
     def _evaluate_knowledge_doc_for_insights(self, doc: Dict[str, object]) -> Dict[str, Any]:
         status = str(doc.get("status") or "").strip().lower()
+        knowledge_kind = self._resolve_knowledge_kind(
+            explicit_kind=doc.get("knowledge_kind"),
+            knowledge_ref=doc.get("path"),
+            tags=doc.get("tags"),
+        )
         excluded_reason = None
         if status != "active":
             excluded_reason = "status_not_active"
@@ -2316,6 +2374,8 @@ class ForgeApp:
             excluded_reason = "superseded"
         elif self._is_correction_like_knowledge(doc):
             excluded_reason = "correction_like"
+        elif knowledge_kind == "reference":
+            excluded_reason = "knowledge_kind_reference"
 
         eligible_tags = []
         if excluded_reason is None:
@@ -2427,6 +2487,11 @@ class ForgeApp:
         eligible_docs = []
         for doc in knowledge_docs:
             evaluation = self._evaluate_knowledge_doc_for_insights(doc)
+            knowledge_kind = self._resolve_knowledge_kind(
+                explicit_kind=doc.get("knowledge_kind"),
+                knowledge_ref=doc.get("path"),
+                tags=doc.get("tags"),
+            )
             eligible_tags = list(evaluation["eligible_tags"])
             excluded_reason = evaluation["excluded_reason"]
             if excluded_reason is None:
@@ -2437,6 +2502,7 @@ class ForgeApp:
             document_evaluations.append(
                 {
                     "path": doc["path"],
+                    "knowledge_kind": knowledge_kind,
                     "status": doc.get("status"),
                     "tags": list(doc.get("tags") or []),
                     "eligible_tags": eligible_tags,

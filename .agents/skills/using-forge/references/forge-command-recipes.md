@@ -52,7 +52,7 @@ forge promote-ready --initiator codex --dry-run --limit 5
 
 This writes a preview receipt that can be reused exactly.
 
-The preview receipt and the confirmed promotion both surface publication metadata and `last_receipt_ref` for every promoted document so the receipt itself documents the published state.
+The preview receipt and the confirmed promotion both surface `knowledge_kind`, publication metadata, and `last_receipt_ref` for every promoted document so the receipt itself documents the published state.
 
 ## Confirm Ready Promotion
 
@@ -92,13 +92,15 @@ Remote mutations default to detached jobs. Poll `forge job get <job_id>` and the
 forge knowledge get knowledge/troubleshooting/example.md
 ```
 
-Use the returned `last_receipt_ref` to jump straight to the latest durable receipt for that knowledge document.
+Use the returned `knowledge_kind` to understand whether the document is meant for retrieval, workflow execution, or synthesis evidence, and use `last_receipt_ref` to jump straight to the latest durable receipt.
 
 ## Explain Insight Evidence
 
 ```bash
 forge explain insight state/receipts/insights/<id>.json
 ```
+
+Excluded documents now carry both `knowledge_kind` and `excluded_reason`; `reference` knowledge stays retrieval-only and should show up there instead of in `selected_paths`.
 
 ## Safe Retry
 

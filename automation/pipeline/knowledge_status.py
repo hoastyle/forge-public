@@ -7,6 +7,7 @@ from typing import Mapping, Optional
 @dataclass
 class KnowledgePublicationStatus:
     knowledge_ref: str
+    knowledge_kind: Optional[str]
     publication_status: Optional[str]
     judge_score: Optional[float]
     judge_decision: Optional[str]
@@ -20,6 +21,7 @@ class KnowledgePublicationStatus:
 def build_knowledge_publication_status(
     *,
     knowledge_ref: str,
+    knowledge_kind: Optional[str],
     document: Mapping[str, object],
     excluded_reason: Optional[str],
     last_receipt_ref: Optional[str],
@@ -30,6 +32,7 @@ def build_knowledge_publication_status(
     updated_at = _normalize_optional_text(document.get("updated_at"))
     return KnowledgePublicationStatus(
         knowledge_ref=knowledge_ref,
+        knowledge_kind=_normalize_optional_text(knowledge_kind),
         publication_status=publication_status,
         judge_score=_parse_optional_float(document.get("judge_score")),
         judge_decision=judge_decision,
