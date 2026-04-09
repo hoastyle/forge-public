@@ -164,12 +164,16 @@ func runInject(args []string) int {
 	source := fs.String("source", "", "")
 	initiator := fs.String("initiator", "manual", "")
 	promoteKnowledge := fs.Bool("promote-knowledge", false, "")
-	detach := fs.Bool("detach", false, "")
+	detach := fs.Bool("detach", true, "")
+	wait := fs.Bool("wait", false, "")
 	operationID := fs.String("operation-id", "", "")
 	var tags stringList
 	fs.Var(&tags, "tag", "")
 	if ok, code := parseFlags(fs, args, injectHelpText()); !ok {
 		return code
+	}
+	if !ensureWaitDetachExclusive(fs) {
+		return 2
 	}
 
 	sources := 0
@@ -192,12 +196,16 @@ func runInject(args []string) int {
 		return code
 	}
 
+	detachValue := *detach
+	if *wait {
+		detachValue = false
+	}
 	payload := map[string]interface{}{
 		"title":             strings.TrimSpace(*title),
 		"source":            strings.TrimSpace(*source),
 		"initiator":         strings.TrimSpace(*initiator),
 		"promote_knowledge": *promoteKnowledge,
-		"detach":            *detach,
+		"detach":            detachValue,
 		"tags":              []string(tags),
 	}
 	if strings.TrimSpace(*operationID) != "" {
@@ -249,10 +257,14 @@ func runPromoteRaw(args []string) int {
 	server := fs.String("server", "", "")
 	token := fs.String("token", "", "")
 	initiator := fs.String("initiator", "manual", "")
-	detach := fs.Bool("detach", false, "")
+	detach := fs.Bool("detach", true, "")
+	wait := fs.Bool("wait", false, "")
 	operationID := fs.String("operation-id", "", "")
-	if ok, code := parseFlags(fs, reorderInterspersedArgs(args, map[string]bool{"detach": true}), promoteRawHelpText()); !ok {
+	if ok, code := parseFlags(fs, reorderInterspersedArgs(args, map[string]bool{"detach": true, "wait": true}), promoteRawHelpText()); !ok {
 		return code
+	}
+	if !ensureWaitDetachExclusive(fs) {
+		return 2
 	}
 	if fs.NArg() != 1 {
 		printFailure("promote-raw requires exactly one raw_ref argument")
@@ -262,10 +274,14 @@ func runPromoteRaw(args []string) int {
 	if code != 0 {
 		return code
 	}
+	detachValue := *detach
+	if *wait {
+		detachValue = false
+	}
 	payload := map[string]interface{}{
 		"raw_ref":   fs.Arg(0),
 		"initiator": *initiator,
-		"detach":    *detach,
+		"detach":    detachValue,
 	}
 	if strings.TrimSpace(*operationID) != "" {
 		payload["operation_id"] = strings.TrimSpace(*operationID)
@@ -282,20 +298,28 @@ func runPromoteReady(args []string) int {
 	dryRun := fs.Bool("dry-run", false, "")
 	limit := fs.Int("limit", -1, "")
 	confirmReceipt := fs.String("confirm-receipt", "", "")
-	detach := fs.Bool("detach", false, "")
+	detach := fs.Bool("detach", true, "")
+	wait := fs.Bool("wait", false, "")
 	operationID := fs.String("operation-id", "", "")
 	if ok, code := parseFlags(fs, args, promoteReadyHelpText()); !ok {
 		return code
+	}
+	if !ensureWaitDetachExclusive(fs) {
+		return 2
 	}
 	conn, code := requireConnection(*server, *token)
 	if code != 0 {
 		return code
 	}
+	detachValue := *detach
+	if *wait {
+		detachValue = false
+	}
 	payload := map[string]interface{}{
 		"initiator":       *initiator,
 		"dry_run":         *dryRun,
 		"confirm_receipt": strings.TrimSpace(*confirmReceipt),
-		"detach":          *detach,
+		"detach":          detachValue,
 	}
 	if strings.TrimSpace(*operationID) != "" {
 		payload["operation_id"] = strings.TrimSpace(*operationID)
@@ -312,12 +336,16 @@ func runSynthesize(args []string) int {
 	server := fs.String("server", "", "")
 	token := fs.String("token", "", "")
 	initiator := fs.String("initiator", "manual", "")
-	detach := fs.Bool("detach", false, "")
+	detach := fs.Bool("detach", true, "")
+	wait := fs.Bool("wait", false, "")
 	dryRun := fs.Bool("dry-run", false, "")
 	confirmReceipt := fs.String("confirm-receipt", "", "")
 	operationID := fs.String("operation-id", "", "")
 	if ok, code := parseFlags(fs, args, synthesizeHelpText()); !ok {
 		return code
+	}
+	if !ensureWaitDetachExclusive(fs) {
+		return 2
 	}
 	if *dryRun && strings.TrimSpace(*confirmReceipt) != "" {
 		printFailure("synthesize-insights does not allow --confirm-receipt together with --dry-run")
@@ -327,11 +355,15 @@ func runSynthesize(args []string) int {
 	if code != 0 {
 		return code
 	}
+	detachValue := *detach
+	if *wait {
+		detachValue = false
+	}
 	payload := map[string]interface{}{
 		"initiator":       *initiator,
 		"dry_run":         *dryRun,
 		"confirm_receipt": strings.TrimSpace(*confirmReceipt),
-		"detach":          *detach,
+		"detach":          detachValue,
 	}
 	if strings.TrimSpace(*operationID) != "" {
 		payload["operation_id"] = strings.TrimSpace(*operationID)
@@ -701,6 +733,24 @@ func parseFlags(fs *flag.FlagSet, args []string, helpText string) (bool, int) {
 	return true, 0
 }
 
+func ensureWaitDetachExclusive(fs *flag.FlagSet) bool {
+	waitUsed := false
+	detachUsed := false
+	fs.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case "wait":
+			waitUsed = true
+		case "detach":
+			detachUsed = true
+		}
+	})
+	if waitUsed && detachUsed {
+		printFailure("--wait cannot be used with --detach")
+		return false
+	}
+	return true
+}
+
 func reorderInterspersedArgs(args []string, booleanFlags map[string]bool) []string {
 	flags := []string{}
 	positionals := []string{}
@@ -773,7 +823,8 @@ func injectHelpText() string {
 		"  --tag <tag>               repeatable tag flag",
 		"  --initiator <initiator>    provenance initiator value",
 		"  --promote-knowledge        trigger raw -> knowledge after inject",
-		"  --detach                   queue the mutation and return a job id",
+		"  --detach                   queue the mutation and return a job id (default)",
+		"  --wait                     wait for the mutation to finish instead of detaching",
 		"  --operation-id <id>        stable mutation identifier for safe retries",
 	}, "\n")
 }
@@ -791,20 +842,21 @@ func queueHelpText(command string) string {
 
 func promoteRawHelpText() string {
 	return strings.Join([]string{
-		"usage: forge promote-raw <raw_ref> [--server <url>] [--token <token>] [--initiator <initiator>] [--detach]",
+		"usage: forge promote-raw <raw_ref> [--server <url>] [--token <token>] [--initiator <initiator>] [--detach] [--wait]",
 		"",
 		"Options:",
 		"  --server <url>             override configured Forge service URL",
 		"  --token <token>            override configured bearer token",
 		"  --initiator <initiator>    provenance initiator value",
-		"  --detach                   queue the mutation and return a job id",
+		"  --detach                   queue the mutation and return a job id (default)",
+		"  --wait                     wait for the mutation to finish instead of detaching",
 		"  --operation-id <id>        stable mutation identifier for safe retries",
 	}, "\n")
 }
 
 func promoteReadyHelpText() string {
 	return strings.Join([]string{
-		"usage: forge promote-ready [--server <url>] [--token <token>] [--initiator <initiator>] [--dry-run] [--limit <n>] [--confirm-receipt <receipt_ref>] [--detach]",
+		"usage: forge promote-ready [--server <url>] [--token <token>] [--initiator <initiator>] [--dry-run] [--limit <n>] [--confirm-receipt <receipt_ref>] [--detach] [--wait]",
 		"",
 		"Options:",
 		"  --server <url>                   override configured Forge service URL",
@@ -813,14 +865,15 @@ func promoteReadyHelpText() string {
 		"  --dry-run                        preview the ready batch without promoting",
 		"  --limit <n>                      limit the number of ready items inspected",
 		"  --confirm-receipt <receipt_ref>  execute a previously previewed ready batch",
-		"  --detach                         queue the mutation and return a job id",
+		"  --detach                         queue the mutation and return a job id (default)",
+		"  --wait                           wait for the ready promotion to complete instead of detaching",
 		"  --operation-id <id>              stable mutation identifier for safe retries",
 	}, "\n")
 }
 
 func synthesizeHelpText() string {
 	return strings.Join([]string{
-		"usage: forge synthesize-insights [--server <url>] [--token <token>] [--initiator <initiator>] [--dry-run] [--confirm-receipt <receipt_ref>] [--detach]",
+		"usage: forge synthesize-insights [--server <url>] [--token <token>] [--initiator <initiator>] [--dry-run] [--confirm-receipt <receipt_ref>] [--detach] [--wait]",
 		"",
 		"Options:",
 		"  --server <url>             override configured Forge service URL",
@@ -828,7 +881,8 @@ func synthesizeHelpText() string {
 		"  --initiator <initiator>    provenance initiator value",
 		"  --dry-run                  preview the synthesis outcome without committing",
 		"  --confirm-receipt <receipt_ref>  execute a previously previewed synthesis",
-		"  --detach                   queue the mutation and return a job id",
+		"  --detach                   queue the mutation and return a job id (default)",
+		"  --wait                     wait for the synthesis to complete instead of detaching",
 		"  --operation-id <id>        stable mutation identifier for safe retries",
 	}, "\n")
 }

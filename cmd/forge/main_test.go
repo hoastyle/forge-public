@@ -42,6 +42,103 @@ func captureRun(t *testing.T, args []string) (int, map[string]interface{}) {
 	return code, payload
 }
 
+func runRemoteMutationCommand(t *testing.T, args []string, expectedPath string, assertRequest func(map[string]interface{})) {
+	t.Helper()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != expectedPath {
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+		var payload map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		assertRequest(payload)
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{"status": "queued"}); err != nil {
+			t.Fatalf("encode response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	fullArgs := append([]string{}, args...)
+	fullArgs = append(fullArgs, "--server", server.URL, "--token", "secret")
+	code, payload := captureRun(t, fullArgs)
+	if code != 0 {
+		t.Fatalf("code=%d payload=%v", code, payload)
+	}
+	if payload["status"] != "queued" {
+		t.Fatalf("payload=%v", payload)
+	}
+}
+
+func TestRemoteMutationCommandsDefaultToDetach(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		path string
+	}{
+		{"inject", []string{"inject", "--text", "hello world"}, "/v1/inject"},
+		{"promote-raw", []string{"promote-raw", "raw/123"}, "/v1/promote-raw"},
+		{"promote-ready", []string{"promote-ready"}, "/v1/promote-ready"},
+		{"synthesize-insights", []string{"synthesize-insights"}, "/v1/synthesize-insights"},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			runRemoteMutationCommand(t, tt.args, tt.path, func(payload map[string]interface{}) {
+				detach, ok := payload["detach"].(bool)
+				if !ok || !detach {
+					t.Fatalf("expected detach true payload=%v", payload)
+				}
+			})
+		})
+	}
+}
+
+func TestRemoteMutationWaitFlagClearsDetach(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		path string
+	}{
+		{"inject", []string{"inject", "--text", "hello world", "--wait"}, "/v1/inject"},
+		{"promote-raw", []string{"promote-raw", "raw/123", "--wait"}, "/v1/promote-raw"},
+		{"promote-ready", []string{"promote-ready", "--wait"}, "/v1/promote-ready"},
+		{"synthesize-insights", []string{"synthesize-insights", "--wait"}, "/v1/synthesize-insights"},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			runRemoteMutationCommand(t, tt.args, tt.path, func(payload map[string]interface{}) {
+				detach, ok := payload["detach"].(bool)
+				if !ok || detach {
+					t.Fatalf("expected detach false payload=%v", payload)
+				}
+			})
+		})
+	}
+}
+
+func TestRemoteMutationRejectsWaitWithDetach(t *testing.T) {
+	code, payload := captureRun(t, []string{
+		"inject",
+		"--text", "hello world",
+		"--wait",
+		"--detach",
+	})
+	if code != 2 {
+		t.Fatalf("code=%d payload=%v", code, payload)
+	}
+	if payload["status"] != "failed" {
+		t.Fatalf("payload=%v", payload)
+	}
+	message, _ := payload["message"].(string)
+	if !strings.Contains(message, "--wait") || !strings.Contains(message, "--detach") {
+		t.Fatalf("unexpected message %q", message)
+	}
+}
+
 func TestRunTopLevelHelpTokensSucceed(t *testing.T) {
 	for _, args := range [][]string{{"help"}, {"--help"}, {"-h"}} {
 		code, payload := captureRun(t, args)
@@ -67,7 +164,7 @@ func TestRunPromoteReadyHelpShowsSupportedFlagsOnly(t *testing.T) {
 		t.Fatalf("payload=%v", payload)
 	}
 	message, _ := payload["message"].(string)
-	for _, expected := range []string{"--initiator", "--dry-run", "--limit", "--confirm-receipt", "--detach"} {
+	for _, expected := range []string{"--initiator", "--dry-run", "--limit", "--confirm-receipt", "--detach", "--wait"} {
 		if !strings.Contains(message, expected) {
 			t.Fatalf("missing %s in %q", expected, message)
 		}
@@ -86,7 +183,7 @@ func TestRunSynthesizeHelpShowsExpectedFlags(t *testing.T) {
 		t.Fatalf("payload=%v", payload)
 	}
 	message, _ := payload["message"].(string)
-	for _, expected := range []string{"--initiator", "--dry-run", "--confirm-receipt", "--detach", "--operation-id"} {
+	for _, expected := range []string{"--initiator", "--dry-run", "--confirm-receipt", "--detach", "--wait", "--operation-id"} {
 		if !strings.Contains(message, expected) {
 			t.Fatalf("missing %s in %q", expected, message)
 		}

@@ -2,7 +2,7 @@ import json
 import os
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
@@ -180,6 +180,7 @@ class ForgeCliTests(unittest.TestCase):
                 self.assertEqual(payload["input_kind"], "file")
                 self.assertEqual(payload["content"], "Context:\nA remote file note.\n")
                 self.assertEqual(payload["source_ref"], str(source_path))
+                self.assertTrue(payload["detach"])
 
     def test_cli_remote_promote_ready_forwards_operation_id(self):
         from automation.pipeline.cli import main
@@ -207,7 +208,6 @@ class ForgeCliTests(unittest.TestCase):
                                 "--initiator",
                                 "codex",
                                 "--dry-run",
-                                "--detach",
                                 "--operation-id",
                                 "op-ready-1",
                             ]
@@ -218,6 +218,71 @@ class ForgeCliTests(unittest.TestCase):
                 self.assertEqual(payload["operation_id"], "op-ready-1")
                 self.assertTrue(payload["dry_run"])
                 self.assertTrue(payload["detach"])
+
+    def test_cli_remote_synthesize_wait_overrides_default_detach(self):
+        from automation.pipeline.cli import main
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            config_home = Path(tempdir) / "config"
+            with patch.dict(os.environ, {"XDG_CONFIG_HOME": str(config_home)}, clear=False):
+                main(
+                    [
+                        "login",
+                        "--server",
+                        "http://127.0.0.1:8000",
+                        "--token",
+                        "secret-token",
+                    ]
+                )
+
+                stdout = StringIO()
+                with patch("automation.pipeline.cli.execute_remote_command") as remote_command:
+                    remote_command.return_value = (0, {"status": "success", "receipt_ref": "state/receipts/insights/1.json"})
+                    with redirect_stdout(stdout):
+                        exit_code = main(
+                            [
+                                "synthesize-insights",
+                                "--initiator",
+                                "codex",
+                                "--wait",
+                            ]
+                        )
+
+                self.assertEqual(exit_code, 0)
+                payload = remote_command.call_args.args[2]
+                self.assertFalse(payload["detach"])
+
+    def test_cli_remote_mutation_rejects_wait_with_detach(self):
+        from automation.pipeline.cli import main
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            config_home = Path(tempdir) / "config"
+            with patch.dict(os.environ, {"XDG_CONFIG_HOME": str(config_home)}, clear=False):
+                main(
+                    [
+                        "login",
+                        "--server",
+                        "http://127.0.0.1:8000",
+                        "--token",
+                        "secret-token",
+                    ]
+                )
+                stderr = StringIO()
+                with self.assertRaises(SystemExit) as exc:
+                    with redirect_stderr(stderr):
+                        main(
+                            [
+                                "synthesize-insights",
+                                "--initiator",
+                                "codex",
+                                "--wait",
+                                "--detach",
+                            ]
+                        )
+
+                self.assertEqual(exc.exception.code, 2)
+                self.assertIn("--wait", stderr.getvalue())
+                self.assertIn("--detach", stderr.getvalue())
 
     def test_cli_serve_accepts_repo_and_state_roots_after_command(self):
         from automation.pipeline.cli import main

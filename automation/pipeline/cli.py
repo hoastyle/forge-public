@@ -34,6 +34,13 @@ REMOTE_CAPABLE_COMMANDS = {
     "job",
 }
 
+REMOTE_MUTATION_COMMANDS = {
+    "inject",
+    "promote-raw",
+    "promote-ready",
+    "synthesize-insights",
+}
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="forge")
@@ -70,6 +77,7 @@ def build_parser() -> argparse.ArgumentParser:
     inject.add_argument("--initiator", default="manual", type=parse_initiator, choices=ALLOWED_INITIATORS)
     inject.add_argument("--promote-knowledge", action="store_true")
     inject.add_argument("--detach", action="store_true")
+    inject.add_argument("--wait", action="store_true")
     inject.add_argument("--operation-id")
 
     tune = subparsers.add_parser("tune")
@@ -81,6 +89,7 @@ def build_parser() -> argparse.ArgumentParser:
     synthesize.add_argument("--dry-run", action="store_true")
     synthesize.add_argument("--confirm-receipt")
     synthesize.add_argument("--detach", action="store_true")
+    synthesize.add_argument("--wait", action="store_true")
     synthesize.add_argument("--operation-id")
 
     replay = subparsers.add_parser("replay-failure")
@@ -102,6 +111,7 @@ def build_parser() -> argparse.ArgumentParser:
     promote_raw.add_argument("--all", action="store_true")
     promote_raw.add_argument("--initiator", default="manual", type=parse_initiator, choices=ALLOWED_INITIATORS)
     promote_raw.add_argument("--detach", action="store_true")
+    promote_raw.add_argument("--wait", action="store_true")
     promote_raw.add_argument("--operation-id")
 
     promote_ready = subparsers.add_parser("promote-ready")
@@ -110,6 +120,7 @@ def build_parser() -> argparse.ArgumentParser:
     promote_ready.add_argument("--limit", type=int)
     promote_ready.add_argument("--confirm-receipt")
     promote_ready.add_argument("--detach", action="store_true")
+    promote_ready.add_argument("--wait", action="store_true")
     promote_ready.add_argument("--operation-id")
 
     auto_retune = subparsers.add_parser("auto-retune")
@@ -161,6 +172,7 @@ def main(argv=None) -> int:
     )
 
     if _should_use_remote(args, connection, explicit_repo_root):
+        _validate_remote_mutation_flags(parser, args)
         try:
             exit_code, payload = execute_remote_command(args.command, connection, _build_remote_payload(args))
         except RemoteApiError as exc:
@@ -455,7 +467,7 @@ def _build_remote_payload(args) -> Dict[str, Any]:
             "tags": args.tags,
             "initiator": args.initiator,
             "promote_knowledge": args.promote_knowledge,
-            "detach": args.detach,
+            "detach": _resolve_remote_detach(args),
             "operation_id": args.operation_id,
         }
         if args.text is not None:
@@ -480,7 +492,7 @@ def _build_remote_payload(args) -> Dict[str, Any]:
         return {
             "raw_ref": args.raw_ref,
             "initiator": args.initiator,
-            "detach": args.detach,
+            "detach": _resolve_remote_detach(args),
             "operation_id": args.operation_id,
         }
     if args.command == "promote-ready":
@@ -489,7 +501,7 @@ def _build_remote_payload(args) -> Dict[str, Any]:
             "dry_run": args.dry_run,
             "limit": args.limit,
             "confirm_receipt": args.confirm_receipt,
-            "detach": args.detach,
+            "detach": _resolve_remote_detach(args),
             "operation_id": args.operation_id,
         }
     if args.command == "synthesize-insights":
@@ -497,7 +509,7 @@ def _build_remote_payload(args) -> Dict[str, Any]:
             "initiator": args.initiator,
             "dry_run": args.dry_run,
             "confirm_receipt": args.confirm_receipt,
-            "detach": args.detach,
+            "detach": _resolve_remote_detach(args),
             "operation_id": args.operation_id,
         }
     if args.command == "receipt":
@@ -516,6 +528,21 @@ def _exit_code_from_payload(payload: Dict[str, Any]) -> int:
     if status in {"failed", "error"}:
         return 1
     return 0
+
+
+def _validate_remote_mutation_flags(parser: argparse.ArgumentParser, args) -> None:
+    if args.command not in REMOTE_MUTATION_COMMANDS:
+        return
+    if getattr(args, "wait", False) and getattr(args, "detach", False):
+        parser.error("--wait does not allow --detach; remote mutations already default to detached jobs")
+
+
+def _resolve_remote_detach(args) -> bool:
+    if getattr(args, "wait", False):
+        return False
+    if getattr(args, "detach", False):
+        return True
+    return True
 
 
 def _build_local_app(repo_root: Path, state_root: Optional[Path]) -> ForgeApp:
