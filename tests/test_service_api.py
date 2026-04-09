@@ -146,6 +146,242 @@ class ForgeServiceApiTests(unittest.TestCase):
             self.assertEqual(final_payload["status"], "success")
             self.assertTrue(final_payload["receipt_ref"].startswith("state/receipts/inject/"))
 
+    def test_service_reuses_existing_inline_operation_result(self):
+        try:
+            from fastapi.testclient import TestClient
+        except ImportError as exc:
+            self.skipTest(str(exc))
+        from automation.pipeline.service_api import create_app
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            repo_root = Path(tempdir) / "repo"
+            state_root = Path(tempdir) / "state-store"
+            app = create_app(repo_root=repo_root, state_root=state_root, bearer_token="secret-token")
+            client = TestClient(app)
+            headers = {"Authorization": "Bearer secret-token"}
+
+            request_payload = {
+                "input_kind": "text",
+                "content": "Context:\nInline retry-safe note.\n",
+                "title": "Retry-safe inline",
+                "source": "service test",
+                "initiator": "codex",
+                "promote_knowledge": False,
+                "operation_id": "op-inline-1",
+            }
+            first = client.post("/v1/inject", headers=headers, json=request_payload)
+            second = client.post("/v1/inject", headers=headers, json=request_payload)
+
+            self.assertEqual(first.status_code, 200)
+            self.assertEqual(second.status_code, 200)
+            first_payload = first.json()
+            second_payload = second.json()
+            self.assertEqual(first_payload.get("operation_id"), "op-inline-1")
+            self.assertEqual(second_payload, first_payload)
+
+            receipt_files = sorted((state_root / "receipts" / "inject").glob("*.json"))
+            self.assertEqual(len(receipt_files), 1)
+
+            operation_file = state_root / "service" / "operations" / "op-inline-1.json"
+            self.assertTrue(operation_file.exists())
+            operation_payload = json.loads(operation_file.read_text(encoding="utf-8"))
+            self.assertEqual(operation_payload["response"]["id"], first_payload["id"])
+
+    def test_service_reuses_existing_detached_operation_result(self):
+        try:
+            from fastapi.testclient import TestClient
+        except ImportError as exc:
+            self.skipTest(str(exc))
+        from automation.pipeline.service_api import create_app
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            repo_root = Path(tempdir) / "repo"
+            state_root = Path(tempdir) / "state-store"
+            app = create_app(repo_root=repo_root, state_root=state_root, bearer_token="secret-token")
+            client = TestClient(app)
+            headers = {"Authorization": "Bearer secret-token"}
+
+            request_payload = {
+                "initiator": "codex",
+                "detach": True,
+                "operation_id": "op-detached-1",
+            }
+            first = client.post("/v1/synthesize-insights", headers=headers, json=request_payload)
+            second = client.post("/v1/synthesize-insights", headers=headers, json=request_payload)
+
+            first_payload = first.json()
+            second_payload = second.json()
+            try:
+                self.assertEqual(first.status_code, 202)
+                self.assertEqual(second.status_code, 202)
+                self.assertEqual(first_payload.get("operation_id"), "op-detached-1")
+                self.assertEqual(second_payload, first_payload)
+
+                job_files = sorted((state_root / "service" / "jobs").glob("*.json"))
+                self.assertEqual(len(job_files), 1)
+
+                operation_file = state_root / "service" / "operations" / "op-detached-1.json"
+                self.assertTrue(operation_file.exists())
+                operation_payload = json.loads(operation_file.read_text(encoding="utf-8"))
+                self.assertEqual(operation_payload["response"]["job_id"], first_payload["job_id"])
+            finally:
+                job_id = first_payload.get("job_id")
+                if job_id:
+                    for _ in range(40):
+                        job_response = client.get("/v1/jobs/{0}".format(job_id), headers=headers)
+                        if job_response.status_code == 200 and job_response.json()["status"] in {"success", "failed"}:
+                            break
+                        time.sleep(0.05)
+
+    def test_service_rejects_operation_id_reuse_with_different_payload(self):
+        try:
+            from fastapi.testclient import TestClient
+        except ImportError as exc:
+            self.skipTest(str(exc))
+        from automation.pipeline.service_api import create_app
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            repo_root = Path(tempdir) / "repo"
+            state_root = Path(tempdir) / "state-store"
+            app = create_app(repo_root=repo_root, state_root=state_root, bearer_token="secret-token")
+            client = TestClient(app)
+            headers = {"Authorization": "Bearer secret-token"}
+
+            first = client.post(
+                "/v1/promote-ready",
+                headers=headers,
+                json={
+                    "initiator": "codex",
+                    "dry_run": True,
+                    "operation_id": "op-ready-conflict-1",
+                },
+            )
+            second = client.post(
+                "/v1/promote-ready",
+                headers=headers,
+                json={
+                    "initiator": "codex",
+                    "dry_run": False,
+                    "operation_id": "op-ready-conflict-1",
+                },
+            )
+
+            self.assertEqual(first.status_code, 200)
+            self.assertEqual(second.status_code, 409)
+            payload = second.json()
+            self.assertEqual(payload["status"], "failed")
+            self.assertEqual(payload["operation_id"], "op-ready-conflict-1")
+            self.assertEqual(payload["command"], "promote-ready")
+            self.assertEqual(payload["stored_command"], "promote-ready")
+            self.assertIn("stored_fingerprint", payload)
+
+    def test_service_returns_knowledge_status(self):
+        try:
+            from fastapi.testclient import TestClient
+        except ImportError as exc:
+            self.skipTest(str(exc))
+        from automation.pipeline.service_api import create_app
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            repo_root = Path(tempdir) / "repo"
+            state_root = Path(tempdir) / "state-store"
+            knowledge_path = repo_root / "knowledge" / "troubleshooting" / "example.md"
+            knowledge_path.parent.mkdir(parents=True, exist_ok=True)
+            knowledge_path.write_text(
+                (
+                    "---\n"
+                    "title: Example knowledge\n"
+                    "created: 2026-04-04\n"
+                    "updated: 2026-04-05\n"
+                    "tags: [network, dns]\n"
+                    "status: active\n"
+                    "judge_score: 0.91\n"
+                    "judge_decision: publish\n"
+                    "release_reason: Meets the release bar.\n"
+                    "reuse_count: 0\n"
+                    "derived_from: [raw/captures/example.md]\n"
+                    "---\n\n"
+                    "# Example knowledge\n\n"
+                    "Reusable DNS troubleshooting knowledge.\n"
+                ),
+                encoding="utf-8",
+            )
+            app = create_app(repo_root=repo_root, state_root=state_root, bearer_token="secret-token")
+            client = TestClient(app)
+            headers = {"Authorization": "Bearer secret-token"}
+
+            response = client.get(
+                "/v1/knowledge",
+                headers=headers,
+                params={"selector": "knowledge/troubleshooting/example.md"},
+            )
+
+            self.assertEqual(response.status_code, 200)
+            payload = response.json()
+            self.assertEqual(payload["status"], "success")
+            self.assertEqual(payload["knowledge_ref"], "knowledge/troubleshooting/example.md")
+            self.assertEqual(payload["publication_status"], "active")
+            self.assertEqual(payload["judge_decision"], "publish")
+            self.assertTrue(payload["eligible_for_insights"])
+
+    def test_service_explains_insight_receipt(self):
+        try:
+            from fastapi.testclient import TestClient
+        except ImportError as exc:
+            self.skipTest(str(exc))
+        from automation.pipeline.service_api import create_app
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            repo_root = Path(tempdir) / "repo"
+            state_root = Path(tempdir) / "state-store"
+            for idx in range(2):
+                knowledge_path = repo_root / "knowledge" / "troubleshooting" / "note-{0}.md".format(idx)
+                knowledge_path.parent.mkdir(parents=True, exist_ok=True)
+                knowledge_path.write_text(
+                    (
+                        "---\n"
+                        "title: Note {0}\n"
+                        "created: 2026-04-04\n"
+                        "updated: 2026-04-04\n"
+                        "tags: [network, dns]\n"
+                        "status: active\n"
+                        "judge_score: 0.92\n"
+                        "judge_decision: publish\n"
+                        "release_reason: Meets the release bar.\n"
+                        "reuse_count: 0\n"
+                        "derived_from: [raw/captures/source-{0}.md]\n"
+                        "---\n\n"
+                        "# Note {0}\n\n"
+                        "Reusable DNS troubleshooting knowledge.\n"
+                    ).format(idx),
+                    encoding="utf-8",
+                )
+            app = create_app(repo_root=repo_root, state_root=state_root, bearer_token="secret-token")
+            client = TestClient(app)
+            headers = {"Authorization": "Bearer secret-token"}
+
+            synthesize_response = client.post(
+                "/v1/synthesize-insights",
+                headers=headers,
+                json={"initiator": "codex"},
+            )
+            self.assertEqual(synthesize_response.status_code, 200)
+            receipt_ref = synthesize_response.json()["receipt_ref"]
+
+            response = client.get(
+                "/v1/explain/insight",
+                headers=headers,
+                params={"receipt_ref": receipt_ref},
+            )
+
+            self.assertEqual(response.status_code, 200)
+            payload = response.json()
+            self.assertEqual(payload["status"], "success")
+            self.assertEqual(payload["receipt_ref"], receipt_ref)
+            self.assertIn("selected_paths", payload)
+            self.assertIn("candidate_clusters", payload)
+            self.assertIn("excluded_documents", payload)
+
     def test_service_receipt_returns_404_for_unknown_selector(self):
         try:
             from fastapi.testclient import TestClient

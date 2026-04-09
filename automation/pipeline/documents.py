@@ -16,11 +16,15 @@ def load_knowledge_documents(repo_root: Path) -> List[Dict[str, object]]:
                 "path": str(path.relative_to(repo_root)),
                 "title": metadata.get("title") or path.stem,
                 "status": metadata.get("status") or "draft",
+                "updated_at": metadata.get("updated") or None,
                 "tags": metadata.get("tags") or [],
                 "derived_from": metadata.get("derived_from") or [],
                 "knowledge_kind": metadata.get("knowledge_kind") or "",
                 "supersedes": metadata.get("supersedes") or [],
                 "superseded_by": metadata.get("superseded_by") or [],
+                "judge_score": metadata.get("judge_score") or None,
+                "judge_decision": metadata.get("judge_decision") or None,
+                "release_reason": metadata.get("release_reason") or None,
                 "body": body,
             }
         )

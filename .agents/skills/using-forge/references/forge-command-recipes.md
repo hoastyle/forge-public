@@ -5,15 +5,15 @@
 Prefer the public CLI:
 
 ```bash
-forge ...
+forge <command> ...
 ```
 
 Use repo-local entrypoints only for maintenance:
 
 ```bash
-uv run forge --repo-root . ...
-./automation/scripts/forge ...
-python -m automation.pipeline ...
+uv run forge --repo-root . doctor
+uv run forge --repo-root . serve --host 0.0.0.0 --port 8000
+python -m automation.pipeline.cli --repo-root . doctor
 ```
 
 ## Login And Readiness
@@ -44,23 +44,6 @@ forge review-queue --initiator codex
 
 Use `review-raw` only when you need the full inventory view.
 
-## Review Sensitive Queue
-
-```bash
-forge review-sensitive --initiator codex
-```
-
-Use this when `review-queue` says an item is blocked by sensitive content.
-
-## Preview Or Apply Redaction
-
-```bash
-forge redact-raw raw/captures/example.md --initiator codex --dry-run
-forge redact-raw raw/captures/example.md --initiator codex
-```
-
-Dry run writes only a preview receipt. Real execution replaces only the matched secret values with `[REDACTED]`.
-
 ## Preview Ready Promotion
 
 ```bash
@@ -87,11 +70,28 @@ forge promote-raw raw/captures/example.md --initiator codex
 
 ```bash
 forge synthesize-insights --initiator codex
-forge synthesize-insights --initiator codex --dry-run
-forge synthesize-insights --initiator codex --confirm-receipt state/receipts/insights/<preview>.json
 ```
 
 Add `--detach` to long-running mutations when the caller should return immediately.
+
+## Inspect Knowledge Status
+
+```bash
+forge knowledge get knowledge/troubleshooting/example.md
+```
+
+## Explain Insight Evidence
+
+```bash
+forge explain insight state/receipts/insights/<id>.json
+```
+
+## Safe Retry
+
+```bash
+forge promote-ready --initiator codex --dry-run --operation-id nightly-ready-preview-20260409
+forge synthesize-insights --initiator codex --detach --operation-id nightly-insight-build-20260409
+```
 
 ## Receipts And Jobs
 
@@ -122,3 +122,4 @@ If any of the following change, update `../SKILL.md` in the same change set:
 - trigger semantics for `raw -> knowledge -> insights`
 - service login / token / deployment workflow
 - maintainer repo-local entrypoints
+- `docs/management/forge-command-contract.md`

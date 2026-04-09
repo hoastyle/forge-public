@@ -48,8 +48,12 @@ func main() {
 
 func run(args []string) int {
 	if len(args) == 0 {
-		printUsage()
+		printUsageFailure()
 		return 2
+	}
+	if isHelpToken(args[0]) {
+		printUsageSuccess()
+		return 0
 	}
 
 	switch args[0] {
@@ -78,6 +82,10 @@ func run(args []string) int {
 		return runPromoteReady(args[1:])
 	case "synthesize-insights":
 		return runSynthesize(args[1:])
+	case "knowledge":
+		return runKnowledge(args[1:])
+	case "explain":
+		return runExplain(args[1:])
 	case "receipt":
 		return runReceipt(args[1:])
 	case "job":
@@ -93,9 +101,8 @@ func runLogin(args []string) int {
 	fs.SetOutput(ioutil.Discard)
 	server := fs.String("server", "", "")
 	token := fs.String("token", "", "")
-	if err := fs.Parse(args); err != nil {
-		printFailure(err.Error())
-		return 2
+	if ok, code := parseFlags(fs, args, loginHelpText()); !ok {
+		return code
 	}
 	if strings.TrimSpace(*server) == "" || strings.TrimSpace(*token) == "" {
 		printFailure("login requires --server and --token")
@@ -135,9 +142,8 @@ func runDoctor(args []string) int {
 	fs.SetOutput(ioutil.Discard)
 	server := fs.String("server", "", "")
 	token := fs.String("token", "", "")
-	if err := fs.Parse(args); err != nil {
-		printFailure(err.Error())
-		return 2
+	if ok, code := parseFlags(fs, args, doctorHelpText()); !ok {
+		return code
 	}
 	conn, code := requireConnection(*server, *token)
 	if code != 0 {
@@ -159,11 +165,11 @@ func runInject(args []string) int {
 	initiator := fs.String("initiator", "manual", "")
 	promoteKnowledge := fs.Bool("promote-knowledge", false, "")
 	detach := fs.Bool("detach", false, "")
+	operationID := fs.String("operation-id", "", "")
 	var tags stringList
 	fs.Var(&tags, "tag", "")
-	if err := fs.Parse(args); err != nil {
-		printFailure(err.Error())
-		return 2
+	if ok, code := parseFlags(fs, args, injectHelpText()); !ok {
+		return code
 	}
 
 	sources := 0
@@ -194,6 +200,9 @@ func runInject(args []string) int {
 		"detach":            *detach,
 		"tags":              []string(tags),
 	}
+	if strings.TrimSpace(*operationID) != "" {
+		payload["operation_id"] = strings.TrimSpace(*operationID)
+	}
 
 	switch {
 	case strings.TrimSpace(*text) != "":
@@ -223,9 +232,8 @@ func runQueueRead(command string, args []string) int {
 	server := fs.String("server", "", "")
 	token := fs.String("token", "", "")
 	initiator := fs.String("initiator", "manual", "")
-	if err := fs.Parse(args); err != nil {
-		printFailure(err.Error())
-		return 2
+	if ok, code := parseFlags(fs, args, queueHelpText(command)); !ok {
+		return code
 	}
 	conn, code := requireConnection(*server, *token)
 	if code != 0 {
@@ -242,9 +250,9 @@ func runPromoteRaw(args []string) int {
 	token := fs.String("token", "", "")
 	initiator := fs.String("initiator", "manual", "")
 	detach := fs.Bool("detach", false, "")
-	if err := fs.Parse(args); err != nil {
-		printFailure(err.Error())
-		return 2
+	operationID := fs.String("operation-id", "", "")
+	if ok, code := parseFlags(fs, reorderInterspersedArgs(args, map[string]bool{"detach": true}), promoteRawHelpText()); !ok {
+		return code
 	}
 	if fs.NArg() != 1 {
 		printFailure("promote-raw requires exactly one raw_ref argument")
@@ -259,6 +267,9 @@ func runPromoteRaw(args []string) int {
 		"initiator": *initiator,
 		"detach":    *detach,
 	}
+	if strings.TrimSpace(*operationID) != "" {
+		payload["operation_id"] = strings.TrimSpace(*operationID)
+	}
 	return runRemoteJSON(conn, http.MethodPost, "/v1/promote-raw", payload, nil)
 }
 
@@ -272,9 +283,9 @@ func runPromoteReady(args []string) int {
 	limit := fs.Int("limit", -1, "")
 	confirmReceipt := fs.String("confirm-receipt", "", "")
 	detach := fs.Bool("detach", false, "")
-	if err := fs.Parse(args); err != nil {
-		printFailure(err.Error())
-		return 2
+	operationID := fs.String("operation-id", "", "")
+	if ok, code := parseFlags(fs, args, promoteReadyHelpText()); !ok {
+		return code
 	}
 	conn, code := requireConnection(*server, *token)
 	if code != 0 {
@@ -285,6 +296,9 @@ func runPromoteReady(args []string) int {
 		"dry_run":         *dryRun,
 		"confirm_receipt": strings.TrimSpace(*confirmReceipt),
 		"detach":          *detach,
+	}
+	if strings.TrimSpace(*operationID) != "" {
+		payload["operation_id"] = strings.TrimSpace(*operationID)
 	}
 	if *limit >= 0 {
 		payload["limit"] = *limit
@@ -299,9 +313,9 @@ func runSynthesize(args []string) int {
 	token := fs.String("token", "", "")
 	initiator := fs.String("initiator", "manual", "")
 	detach := fs.Bool("detach", false, "")
-	if err := fs.Parse(args); err != nil {
-		printFailure(err.Error())
-		return 2
+	operationID := fs.String("operation-id", "", "")
+	if ok, code := parseFlags(fs, args, synthesizeHelpText()); !ok {
+		return code
 	}
 	conn, code := requireConnection(*server, *token)
 	if code != 0 {
@@ -311,10 +325,77 @@ func runSynthesize(args []string) int {
 		"initiator": *initiator,
 		"detach":    *detach,
 	}
+	if strings.TrimSpace(*operationID) != "" {
+		payload["operation_id"] = strings.TrimSpace(*operationID)
+	}
 	return runRemoteJSON(conn, http.MethodPost, "/v1/synthesize-insights", payload, nil)
 }
 
+func runKnowledge(args []string) int {
+	if len(args) == 0 || isHelpToken(args[0]) {
+		printHelp(knowledgeHelpText())
+		return 0
+	}
+	if args[0] != "get" {
+		printFailure("knowledge supports only `knowledge get <selector>`")
+		return 2
+	}
+	fs := flag.NewFlagSet("knowledge get", flag.ContinueOnError)
+	fs.SetOutput(ioutil.Discard)
+	server := fs.String("server", "", "")
+	token := fs.String("token", "", "")
+	if ok, code := parseFlags(fs, reorderInterspersedArgs(args[1:], map[string]bool{}), knowledgeGetHelpText()); !ok {
+		return code
+	}
+	if fs.NArg() != 1 {
+		printFailure("knowledge get requires a selector")
+		return 2
+	}
+	conn, code := requireConnection(*server, *token)
+	if code != 0 {
+		return code
+	}
+	return runRemoteJSON(conn, http.MethodGet, "/v1/knowledge", nil, map[string]string{"selector": fs.Arg(0)})
+}
+
+func runExplain(args []string) int {
+	if len(args) == 0 || isHelpToken(args[0]) {
+		printHelp(explainHelpText())
+		return 0
+	}
+	if args[0] != "insight" {
+		printFailure("explain supports only `explain insight <receipt_ref>`")
+		return 2
+	}
+	fs := flag.NewFlagSet("explain insight", flag.ContinueOnError)
+	fs.SetOutput(ioutil.Discard)
+	server := fs.String("server", "", "")
+	token := fs.String("token", "", "")
+	if ok, code := parseFlags(fs, reorderInterspersedArgs(args[1:], map[string]bool{}), explainInsightHelpText()); !ok {
+		return code
+	}
+	if fs.NArg() != 1 {
+		printFailure("explain insight requires a receipt_ref")
+		return 2
+	}
+	conn, code := requireConnection(*server, *token)
+	if code != 0 {
+		return code
+	}
+	return runRemoteJSON(
+		conn,
+		http.MethodGet,
+		"/v1/explain/insight",
+		nil,
+		map[string]string{"receipt_ref": fs.Arg(0)},
+	)
+}
+
 func runReceipt(args []string) int {
+	if len(args) == 0 || isHelpToken(args[0]) {
+		printHelp(receiptHelpText())
+		return 0
+	}
 	if len(args) == 0 || args[0] != "get" {
 		printFailure("receipt supports only `receipt get <selector>`")
 		return 2
@@ -323,9 +404,8 @@ func runReceipt(args []string) int {
 	fs.SetOutput(ioutil.Discard)
 	server := fs.String("server", "", "")
 	token := fs.String("token", "", "")
-	if err := fs.Parse(args[1:]); err != nil {
-		printFailure(err.Error())
-		return 2
+	if ok, code := parseFlags(fs, reorderInterspersedArgs(args[1:], map[string]bool{}), receiptGetHelpText()); !ok {
+		return code
 	}
 	if fs.NArg() != 1 {
 		printFailure("receipt get requires a selector")
@@ -339,6 +419,10 @@ func runReceipt(args []string) int {
 }
 
 func runJob(args []string) int {
+	if len(args) == 0 || isHelpToken(args[0]) {
+		printHelp(jobHelpText())
+		return 0
+	}
 	if len(args) == 0 || args[0] != "get" {
 		printFailure("job supports only `job get <job_id>`")
 		return 2
@@ -347,9 +431,8 @@ func runJob(args []string) int {
 	fs.SetOutput(ioutil.Discard)
 	server := fs.String("server", "", "")
 	token := fs.String("token", "", "")
-	if err := fs.Parse(args[1:]); err != nil {
-		printFailure(err.Error())
-		return 2
+	if ok, code := parseFlags(fs, reorderInterspersedArgs(args[1:], map[string]bool{}), jobGetHelpText()); !ok {
+		return code
 	}
 	if fs.NArg() != 1 {
 		printFailure("job get requires a job_id")
@@ -593,11 +676,237 @@ func resolveHTTPTimeout() time.Duration {
 	return timeout
 }
 
+func isHelpToken(value string) bool {
+	trimmed := strings.TrimSpace(value)
+	return trimmed == "help" || trimmed == "--help" || trimmed == "-h"
+}
+
+func parseFlags(fs *flag.FlagSet, args []string, helpText string) (bool, int) {
+	if err := fs.Parse(args); err != nil {
+		if err == flag.ErrHelp {
+			printHelp(helpText)
+			return false, 0
+		}
+		printFailure(err.Error())
+		return false, 2
+	}
+	return true, 0
+}
+
+func reorderInterspersedArgs(args []string, booleanFlags map[string]bool) []string {
+	flags := []string{}
+	positionals := []string{}
+	for index := 0; index < len(args); index++ {
+		arg := args[index]
+		if arg == "--" {
+			positionals = append(positionals, args[index+1:]...)
+			break
+		}
+		if strings.HasPrefix(arg, "-") {
+			flags = append(flags, arg)
+			if strings.Contains(arg, "=") {
+				continue
+			}
+			flagName := strings.TrimLeft(arg, "-")
+			if booleanFlags[flagName] {
+				continue
+			}
+			if index+1 < len(args) {
+				index++
+				flags = append(flags, args[index])
+			}
+			continue
+		}
+		positionals = append(positionals, arg)
+	}
+	return append(flags, positionals...)
+}
+
+func topLevelUsageText() string {
+	return strings.Join([]string{
+		"usage: forge <login|logout|version|doctor|inject|review-raw|review-queue|promote-raw|promote-ready|synthesize-insights|knowledge get|explain insight|receipt get|job get> ...",
+		"",
+		"Use `forge <command> --help` for command-specific options.",
+	}, "\n")
+}
+
+func loginHelpText() string {
+	return strings.Join([]string{
+		"usage: forge login --server <url> --token <token>",
+		"",
+		"Options:",
+		"  --server <url>    Forge service URL to save in local config",
+		"  --token <token>   bearer token to save in local config",
+	}, "\n")
+}
+
+func doctorHelpText() string {
+	return strings.Join([]string{
+		"usage: forge doctor [--server <url>] [--token <token>]",
+		"",
+		"Options:",
+		"  --server <url>    override configured Forge service URL",
+		"  --token <token>   override configured bearer token",
+	}, "\n")
+}
+
+func injectHelpText() string {
+	return strings.Join([]string{
+		"usage: forge inject (--text <content> | --file <path> | --feishu-link <url>) [options]",
+		"",
+		"Options:",
+		"  --server <url>             override configured Forge service URL",
+		"  --token <token>            override configured bearer token",
+		"  --text <content>           inject inline text content",
+		"  --file <path>              inject file content from disk",
+		"  --feishu-link <url>        inject a Feishu document link",
+		"  --title <title>            title to store with the raw note",
+		"  --source <source>          provenance/source label",
+		"  --tag <tag>               repeatable tag flag",
+		"  --initiator <initiator>    provenance initiator value",
+		"  --promote-knowledge        trigger raw -> knowledge after inject",
+		"  --detach                   queue the mutation and return a job id",
+		"  --operation-id <id>        stable mutation identifier for safe retries",
+	}, "\n")
+}
+
+func queueHelpText(command string) string {
+	return strings.Join([]string{
+		"usage: forge " + command + " [--server <url>] [--token <token>] [--initiator <initiator>]",
+		"",
+		"Options:",
+		"  --server <url>             override configured Forge service URL",
+		"  --token <token>            override configured bearer token",
+		"  --initiator <initiator>    provenance initiator value",
+	}, "\n")
+}
+
+func promoteRawHelpText() string {
+	return strings.Join([]string{
+		"usage: forge promote-raw <raw_ref> [--server <url>] [--token <token>] [--initiator <initiator>] [--detach]",
+		"",
+		"Options:",
+		"  --server <url>             override configured Forge service URL",
+		"  --token <token>            override configured bearer token",
+		"  --initiator <initiator>    provenance initiator value",
+		"  --detach                   queue the mutation and return a job id",
+		"  --operation-id <id>        stable mutation identifier for safe retries",
+	}, "\n")
+}
+
+func promoteReadyHelpText() string {
+	return strings.Join([]string{
+		"usage: forge promote-ready [--server <url>] [--token <token>] [--initiator <initiator>] [--dry-run] [--limit <n>] [--confirm-receipt <receipt_ref>] [--detach]",
+		"",
+		"Options:",
+		"  --server <url>                   override configured Forge service URL",
+		"  --token <token>                  override configured bearer token",
+		"  --initiator <initiator>          provenance initiator value",
+		"  --dry-run                        preview the ready batch without promoting",
+		"  --limit <n>                      limit the number of ready items inspected",
+		"  --confirm-receipt <receipt_ref>  execute a previously previewed ready batch",
+		"  --detach                         queue the mutation and return a job id",
+		"  --operation-id <id>              stable mutation identifier for safe retries",
+	}, "\n")
+}
+
+func synthesizeHelpText() string {
+	return strings.Join([]string{
+		"usage: forge synthesize-insights [--server <url>] [--token <token>] [--initiator <initiator>] [--detach]",
+		"",
+		"Options:",
+		"  --server <url>             override configured Forge service URL",
+		"  --token <token>            override configured bearer token",
+		"  --initiator <initiator>    provenance initiator value",
+		"  --detach                   queue the mutation and return a job id",
+		"  --operation-id <id>        stable mutation identifier for safe retries",
+	}, "\n")
+}
+
+func receiptHelpText() string {
+	return strings.Join([]string{
+		"usage: forge receipt get <selector>",
+		"",
+		"Use `forge receipt get --help` for selector options.",
+	}, "\n")
+}
+
+func knowledgeHelpText() string {
+	return strings.Join([]string{
+		"usage: forge knowledge get <knowledge_ref>",
+		"",
+		"Use `forge knowledge get --help` for selector options.",
+	}, "\n")
+}
+
+func knowledgeGetHelpText() string {
+	return strings.Join([]string{
+		"usage: forge knowledge get <knowledge_ref> [--server <url>] [--token <token>]",
+		"",
+		"Options:",
+		"  --server <url>    override configured Forge service URL",
+		"  --token <token>   override configured bearer token",
+	}, "\n")
+}
+
+func explainHelpText() string {
+	return strings.Join([]string{
+		"usage: forge explain insight <receipt_ref>",
+		"",
+		"Use `forge explain insight --help` for selector options.",
+	}, "\n")
+}
+
+func explainInsightHelpText() string {
+	return strings.Join([]string{
+		"usage: forge explain insight <receipt_ref> [--server <url>] [--token <token>]",
+		"",
+		"Options:",
+		"  --server <url>    override configured Forge service URL",
+		"  --token <token>   override configured bearer token",
+	}, "\n")
+}
+
+func receiptGetHelpText() string {
+	return strings.Join([]string{
+		"usage: forge receipt get <selector> [--server <url>] [--token <token>]",
+		"",
+		"Options:",
+		"  --server <url>    override configured Forge service URL",
+		"  --token <token>   override configured bearer token",
+	}, "\n")
+}
+
+func jobHelpText() string {
+	return strings.Join([]string{
+		"usage: forge job get <job_id>",
+		"",
+		"Use `forge job get --help` for polling options.",
+	}, "\n")
+}
+
+func jobGetHelpText() string {
+	return strings.Join([]string{
+		"usage: forge job get <job_id> [--server <url>] [--token <token>]",
+		"",
+		"Options:",
+		"  --server <url>    override configured Forge service URL",
+		"  --token <token>   override configured bearer token",
+	}, "\n")
+}
+
 func printJSON(payload interface{}) {
 	encoder := json.NewEncoder(os.Stdout)
 	encoder.SetEscapeHTML(false)
 	encoder.SetIndent("", "  ")
 	_ = encoder.Encode(payload)
+}
+
+func printHelp(message string) {
+	printJSON(map[string]string{
+		"status":  "success",
+		"message": message,
+	})
 }
 
 func printFailure(message string) {
@@ -607,9 +916,10 @@ func printFailure(message string) {
 	})
 }
 
-func printUsage() {
-	printJSON(map[string]interface{}{
-		"status": "failed",
-		"message": "usage: forge <login|logout|version|doctor|inject|review-raw|review-queue|promote-raw|promote-ready|synthesize-insights|receipt get|job get> ...",
-	})
+func printUsageSuccess() {
+	printHelp(topLevelUsageText())
+}
+
+func printUsageFailure() {
+	printFailure(topLevelUsageText())
 }

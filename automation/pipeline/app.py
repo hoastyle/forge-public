@@ -19,8 +19,10 @@ from .controller import (
     validate_patch_bundle,
 )
 from .documents import load_knowledge_documents, load_raw_documents
+from .explain import build_insight_explanation
 from .fetchers import LarkCliFeishuFetcher
 from .initiators import normalize_initiator
+from .knowledge_status import KnowledgePublicationStatus, build_knowledge_publication_status
 from .llm_client import (
     HeuristicInsightClient,
     HeuristicKnowledgeClient,
@@ -702,6 +704,44 @@ class ForgeApp:
             raise FileNotFoundError("receipt selector is ambiguous: {0}".format(selector_text))
         return json.loads(matches[0].read_text(encoding="utf-8"))
 
+    def read_knowledge_status(self, selector: Union[str, Path]) -> Dict[str, Any]:
+        knowledge_ref = str(selector).strip()
+        doc = self._find_knowledge_document(knowledge_ref)
+        if doc is None:
+            raise FileNotFoundError("knowledge not found: {0}".format(knowledge_ref))
+        publication = self._resolve_knowledge_publication_status(knowledge_ref)
+        if publication is None:
+            raise FileNotFoundError("knowledge not found: {0}".format(knowledge_ref))
+        return {
+            "status": "success",
+            "knowledge_ref": knowledge_ref,
+            "title": str(doc.get("title") or Path(knowledge_ref).stem),
+            "tags": list(doc.get("tags") or []),
+            "publication_status": publication.publication_status,
+            "judge_score": publication.judge_score,
+            "judge_decision": publication.judge_decision,
+            "release_reason": publication.release_reason,
+            "eligible_for_insights": publication.eligible_for_insights,
+            "excluded_reason": publication.excluded_reason,
+            "updated_at": publication.updated_at,
+        }
+
+    def explain_insight_receipt(self, receipt_ref: Union[str, Path]) -> Dict[str, Any]:
+        normalized_receipt_ref = str(receipt_ref).strip()
+        receipt = self.read_receipt(normalized_receipt_ref)
+        evidence_trace_ref = str(receipt.get("evidence_trace_ref") or "").strip()
+        if evidence_trace_ref == "":
+            raise FileNotFoundError("insight receipt missing evidence trace: {0}".format(normalized_receipt_ref))
+        trace_path = self._resolve_state_path(evidence_trace_ref)
+        if not trace_path.exists():
+            raise FileNotFoundError("evidence trace not found: {0}".format(evidence_trace_ref))
+        trace_payload = json.loads(trace_path.read_text(encoding="utf-8"))
+        return build_insight_explanation(
+            receipt_ref=normalized_receipt_ref,
+            evidence_trace_ref=evidence_trace_ref,
+            trace_payload=trace_payload,
+        )
+
     def promote_raw(self, raw_ref: Union[str, Path], initiator: str = "manual") -> RawPromotionReceipt:
         initiator = normalize_initiator(initiator)
         promotion_id = self._new_id()
@@ -722,6 +762,7 @@ class ForgeApp:
 
         existing_knowledge_refs = sorted(self._build_raw_to_knowledge_map().get(relative_raw_ref, []))
         if existing_knowledge_refs:
+            publication = self._resolve_knowledge_publication_status(existing_knowledge_refs[0])
             return self._write_raw_promotion_receipt(
                 RawPromotionReceipt(
                     id=promotion_id,
@@ -729,6 +770,12 @@ class ForgeApp:
                     initiator=initiator,
                     raw_ref=relative_raw_ref,
                     knowledge_ref=existing_knowledge_refs[0],
+                    publication_status=publication.publication_status if publication else None,
+                    judge_score=publication.judge_score if publication else None,
+                    judge_decision=publication.judge_decision if publication else None,
+                    eligible_for_insights=publication.eligible_for_insights if publication else None,
+                    excluded_reason=publication.excluded_reason if publication else None,
+                    updated_at=publication.updated_at if publication else None,
                     message="raw document already promoted",
                 )
             )
@@ -769,6 +816,7 @@ class ForgeApp:
             )
 
         self._annotate_raw_distillation(relative_raw_ref, str(result["knowledge_ref"]))
+        publication = self._resolve_knowledge_publication_status(str(result["knowledge_ref"]))
         return self._write_raw_promotion_receipt(
             RawPromotionReceipt(
                 id=promotion_id,
@@ -782,6 +830,14 @@ class ForgeApp:
                 pipeline_mode=result["pipeline_mode"],
                 llm_trace_ref=result["llm_trace_ref"],
                 relay_request_ids=result["relay_request_ids"],
+                publication_status=(
+                    publication.publication_status if publication else result.get("knowledge_status")
+                ),
+                judge_score=publication.judge_score if publication else result.get("judge_score"),
+                judge_decision=publication.judge_decision if publication else result.get("judge_decision"),
+                eligible_for_insights=publication.eligible_for_insights if publication else None,
+                excluded_reason=publication.excluded_reason if publication else None,
+                updated_at=publication.updated_at if publication else self.clock().isoformat(),
                 message="raw promotion completed",
             )
         )
@@ -798,6 +854,7 @@ class ForgeApp:
             raw_status = str(doc["status"]).strip().lower()
             existing_knowledge_refs = sorted(derived_map.get(raw_ref, []))
             if existing_knowledge_refs:
+                publication = self._resolve_knowledge_publication_status(existing_knowledge_refs[0])
                 results.append(
                     self._write_raw_promotion_receipt(
                         RawPromotionReceipt(
@@ -806,6 +863,12 @@ class ForgeApp:
                             initiator=initiator,
                             raw_ref=raw_ref,
                             knowledge_ref=existing_knowledge_refs[0],
+                            publication_status=publication.publication_status if publication else None,
+                            judge_score=publication.judge_score if publication else None,
+                            judge_decision=publication.judge_decision if publication else None,
+                            eligible_for_insights=publication.eligible_for_insights if publication else None,
+                            excluded_reason=publication.excluded_reason if publication else None,
+                            updated_at=publication.updated_at if publication else None,
                             message="raw document already promoted",
                         )
                     )
@@ -1380,6 +1443,9 @@ class ForgeApp:
             "relay_request_ids": self._collect_relay_request_ids(llm_calls),
             "pipeline_mode": pipeline_mode,
             "knowledge_status": status,
+            "judge_score": judge["score"],
+            "judge_decision": judge["decision"],
+            "release_reason": judge["reason"],
             "failure_reason": judge["reason"],
         }
 
@@ -1749,6 +1815,9 @@ class ForgeApp:
             "updated: {0}".format(self.clock().isoformat()),
             "tags: {0}".format(self._yaml_list(tags)),
             "status: {0}".format(status),
+            "judge_score: {0:.2f}".format(judge["score"]),
+            "judge_decision: {0}".format(judge["decision"]),
+            "release_reason: {0}".format(judge["reason"]),
             "reuse_count: 0",
             "derived_from: [{0}]".format(raw_ref),
             "---",
@@ -1937,6 +2006,44 @@ class ForgeApp:
                 return doc
         return None
 
+    def _find_knowledge_document(self, knowledge_ref: str) -> Optional[Dict[str, object]]:
+        for doc in load_knowledge_documents(self.repo_root):
+            if str(doc["path"]) == knowledge_ref:
+                return doc
+        return None
+
+    def _resolve_knowledge_publication_status(self, knowledge_ref: str) -> Optional[KnowledgePublicationStatus]:
+        doc = self._find_knowledge_document(knowledge_ref)
+        if doc is None:
+            return None
+        evaluation = self._evaluate_knowledge_doc_for_insights(doc)
+        return build_knowledge_publication_status(
+            knowledge_ref=knowledge_ref,
+            document=doc,
+            excluded_reason=evaluation["excluded_reason"],
+        )
+
+    def _evaluate_knowledge_doc_for_insights(self, doc: Dict[str, object]) -> Dict[str, Any]:
+        status = str(doc.get("status") or "").strip().lower()
+        excluded_reason = None
+        if status != "active":
+            excluded_reason = "status_not_active"
+        elif doc.get("superseded_by"):
+            excluded_reason = "superseded"
+        elif self._is_correction_like_knowledge(doc):
+            excluded_reason = "correction_like"
+
+        eligible_tags = []
+        if excluded_reason is None:
+            for tag in doc.get("tags") or []:
+                normalized_tag = str(tag).strip().lower()
+                if self._is_generic_insight_tag(normalized_tag):
+                    continue
+                eligible_tags.append(normalized_tag)
+            if not eligible_tags:
+                excluded_reason = "generic_tags_only"
+        return {"eligible_tags": eligible_tags, "excluded_reason": excluded_reason}
+
     def _annotate_raw_distillation(self, raw_ref: str, knowledge_ref: str) -> None:
         raw_path = self.repo_root / raw_ref
         text = raw_path.read_text(encoding="utf-8")
@@ -1992,27 +2099,13 @@ class ForgeApp:
         document_evaluations = []
         eligible_docs = []
         for doc in knowledge_docs:
-            status = str(doc.get("status") or "").strip().lower()
-            excluded_reason = ""
-            if status != "active":
-                excluded_reason = "status_not_active"
-            elif doc.get("superseded_by"):
-                excluded_reason = "superseded"
-            elif self._is_correction_like_knowledge(doc):
-                excluded_reason = "correction_like"
-
-            eligible_tags = []
-            if not excluded_reason:
-                for tag in doc["tags"]:
-                    normalized_tag = str(tag).strip().lower()
-                    if self._is_generic_insight_tag(normalized_tag):
-                        continue
-                    eligible_tags.append(normalized_tag)
+            evaluation = self._evaluate_knowledge_doc_for_insights(doc)
+            eligible_tags = list(evaluation["eligible_tags"])
+            excluded_reason = evaluation["excluded_reason"]
+            if excluded_reason is None:
+                for normalized_tag in eligible_tags:
                     clusters.setdefault(normalized_tag, []).append(doc)
-                if not eligible_tags:
-                    excluded_reason = "generic_tags_only"
-                else:
-                    eligible_docs.append(doc)
+                eligible_docs.append(doc)
 
             document_evaluations.append(
                 {
@@ -2020,7 +2113,7 @@ class ForgeApp:
                     "status": doc.get("status"),
                     "tags": list(doc.get("tags") or []),
                     "eligible_tags": eligible_tags,
-                    "excluded_reason": excluded_reason,
+                    "excluded_reason": excluded_reason or "",
                 }
             )
 

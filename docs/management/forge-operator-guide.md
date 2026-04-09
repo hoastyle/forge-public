@@ -18,6 +18,7 @@ commands listed below.
 All of these commands work against a published Forge CLI binary and a configured service endpoint.
 You do not need a checkout of the private `forge-data` repository to operate the public runtime surface.
 The public installer also bundles the `using-forge` skill for supported local agent skill directories.
+The authoritative command list lives in `docs/management/forge-command-contract.md`.
 
 ## Prerequisites
 
@@ -42,6 +43,8 @@ forge doctor
 ```
 
 `forge login` stores the endpoint in local client config. `FORGE_SERVER` and `FORGE_TOKEN` can override it.
+If a recipe or skill example disagrees with `forge doctor`, `forge help`, or the command contract doc, treat the
+contract doc and actual CLI behavior as the source of truth.
 
 ## Core Workflow
 
@@ -74,6 +77,9 @@ Run insight synthesis explicitly:
 forge synthesize-insights --initiator manual
 ```
 
+This public guide does not advertise `forge synthesize-insights --dry-run` or
+`forge synthesize-insights --confirm-receipt`; those flows are not part of the current public CLI contract.
+
 ## Receipts And Jobs
 
 Use receipts as the source of truth for completed mutations:
@@ -89,6 +95,30 @@ forge job get inject-<jobid>
 ```
 
 `job_id` is only an execution handle. `receipt_ref` is the durable result pointer.
+
+Inspect one knowledge document's publication state:
+
+```bash
+forge knowledge get knowledge/troubleshooting/example.md
+```
+
+Inspect why one insight synthesis selected or excluded evidence:
+
+```bash
+forge explain insight state/receipts/insights/<id>.json
+```
+
+## Safe Retry
+
+If a remote mutation may be retried by automation, pin a stable operation id:
+
+```bash
+forge promote-ready --initiator manual --dry-run --operation-id nightly-ready-preview-20260409
+forge synthesize-insights --initiator manual --detach --operation-id nightly-insight-build-20260409
+```
+
+If the caller times out before seeing the HTTP response, rerun the exact same command with the same
+`--operation-id`.
 
 ## Boundary
 

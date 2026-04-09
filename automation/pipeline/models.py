@@ -181,6 +181,12 @@ class RawPromotionReceipt:
     relay_request_ids: Optional[List[str]] = None
     receipt_ref: Optional[str] = None
     message: Optional[str] = None
+    publication_status: Optional[str] = None
+    judge_score: Optional[float] = None
+    judge_decision: Optional[str] = None
+    eligible_for_insights: Optional[bool] = None
+    excluded_reason: Optional[str] = None
+    updated_at: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

@@ -25,6 +25,8 @@ REMOTE_CAPABLE_COMMANDS = {
     "inject",
     "review-raw",
     "review-queue",
+    "knowledge",
+    "explain",
     "promote-raw",
     "promote-ready",
     "synthesize-insights",
@@ -68,6 +70,7 @@ def build_parser() -> argparse.ArgumentParser:
     inject.add_argument("--initiator", default="manual", type=parse_initiator, choices=ALLOWED_INITIATORS)
     inject.add_argument("--promote-knowledge", action="store_true")
     inject.add_argument("--detach", action="store_true")
+    inject.add_argument("--operation-id")
 
     tune = subparsers.add_parser("tune")
     tune.add_argument("intent")
@@ -76,6 +79,7 @@ def build_parser() -> argparse.ArgumentParser:
     synthesize = subparsers.add_parser("synthesize-insights")
     synthesize.add_argument("--initiator", default="manual", type=parse_initiator, choices=ALLOWED_INITIATORS)
     synthesize.add_argument("--detach", action="store_true")
+    synthesize.add_argument("--operation-id")
 
     replay = subparsers.add_parser("replay-failure")
     replay.add_argument("case_ref")
@@ -96,6 +100,7 @@ def build_parser() -> argparse.ArgumentParser:
     promote_raw.add_argument("--all", action="store_true")
     promote_raw.add_argument("--initiator", default="manual", type=parse_initiator, choices=ALLOWED_INITIATORS)
     promote_raw.add_argument("--detach", action="store_true")
+    promote_raw.add_argument("--operation-id")
 
     promote_ready = subparsers.add_parser("promote-ready")
     promote_ready.add_argument("--initiator", default="manual", type=parse_initiator, choices=ALLOWED_INITIATORS)
@@ -103,12 +108,23 @@ def build_parser() -> argparse.ArgumentParser:
     promote_ready.add_argument("--limit", type=int)
     promote_ready.add_argument("--confirm-receipt")
     promote_ready.add_argument("--detach", action="store_true")
+    promote_ready.add_argument("--operation-id")
 
     auto_retune = subparsers.add_parser("auto-retune")
     auto_retune.add_argument("--initiator", default="manual", type=parse_initiator, choices=ALLOWED_INITIATORS)
     auto_retune.add_argument("--limit", type=int, default=20)
 
     subparsers.add_parser("doctor")
+
+    knowledge = subparsers.add_parser("knowledge")
+    knowledge_subparsers = knowledge.add_subparsers(dest="knowledge_command", required=True)
+    knowledge_get = knowledge_subparsers.add_parser("get")
+    knowledge_get.add_argument("selector")
+
+    explain = subparsers.add_parser("explain")
+    explain_subparsers = explain.add_subparsers(dest="explain_command", required=True)
+    explain_insight = explain_subparsers.add_parser("insight")
+    explain_insight.add_argument("receipt_ref")
 
     receipt = subparsers.add_parser("receipt")
     receipt_subparsers = receipt.add_subparsers(dest="receipt_command", required=True)
@@ -270,6 +286,26 @@ def main(argv=None) -> int:
         sys.stdout.write(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
         return 0
 
+    if args.command == "knowledge":
+        try:
+            payload = app.read_knowledge_status(args.selector)
+        except FileNotFoundError as exc:
+            payload = {"status": "failed", "message": str(exc)}
+            sys.stdout.write(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
+            return 1
+        sys.stdout.write(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
+        return 0
+
+    if args.command == "explain":
+        try:
+            payload = app.explain_insight_receipt(args.receipt_ref)
+        except FileNotFoundError as exc:
+            payload = {"status": "failed", "message": str(exc)}
+            sys.stdout.write(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
+            return 1
+        sys.stdout.write(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
+        return 0
+
     receipt = app.tune(args.intent, initiator=args.initiator)
     sys.stdout.write(json.dumps(receipt.to_dict(), indent=2, ensure_ascii=False) + "\n")
     return 0
@@ -293,6 +329,20 @@ def execute_remote_command(command_name: str, connection: RemoteConnection, payl
             "{0}/v1/review-queue".format(base_url),
             token=connection.token,
             query={"initiator": payload.get("initiator")},
+        )
+    elif command_name == "knowledge":
+        response = request_json(
+            "GET",
+            "{0}/v1/knowledge".format(base_url),
+            token=connection.token,
+            query={"selector": payload.get("selector")},
+        )
+    elif command_name == "explain":
+        response = request_json(
+            "GET",
+            "{0}/v1/explain/insight".format(base_url),
+            token=connection.token,
+            query={"receipt_ref": payload.get("receipt_ref")},
         )
     elif command_name == "receipt":
         response = request_json(
@@ -398,6 +448,7 @@ def _build_remote_payload(args) -> Dict[str, Any]:
             "initiator": args.initiator,
             "promote_knowledge": args.promote_knowledge,
             "detach": args.detach,
+            "operation_id": args.operation_id,
         }
         if args.text is not None:
             payload.update({"input_kind": "text", "content": args.text, "source_ref": "inline:text"})
@@ -418,7 +469,12 @@ def _build_remote_payload(args) -> Dict[str, Any]:
             raise SystemExit("promote-raw requires exactly one of <raw_ref> or --all")
         if args.all:
             raise SystemExit("remote promote-raw does not support --all; use promote-ready or maintain the repo locally")
-        return {"raw_ref": args.raw_ref, "initiator": args.initiator, "detach": args.detach}
+        return {
+            "raw_ref": args.raw_ref,
+            "initiator": args.initiator,
+            "detach": args.detach,
+            "operation_id": args.operation_id,
+        }
     if args.command == "promote-ready":
         return {
             "initiator": args.initiator,
@@ -426,11 +482,20 @@ def _build_remote_payload(args) -> Dict[str, Any]:
             "limit": args.limit,
             "confirm_receipt": args.confirm_receipt,
             "detach": args.detach,
+            "operation_id": args.operation_id,
         }
     if args.command == "synthesize-insights":
-        return {"initiator": args.initiator, "detach": args.detach}
+        return {
+            "initiator": args.initiator,
+            "detach": args.detach,
+            "operation_id": args.operation_id,
+        }
     if args.command == "receipt":
         return {"selector": args.selector}
+    if args.command == "knowledge":
+        return {"selector": args.selector}
+    if args.command == "explain":
+        return {"receipt_ref": args.receipt_ref}
     if args.command == "job":
         return {"job_id": args.job_id}
     return {}

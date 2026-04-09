@@ -783,6 +783,122 @@ class ForgeAppTests(unittest.TestCase):
         self.assertIn("derived_from: [raw/captures/existing.md]", knowledge_text)
         self.assertIn("# Existing raw", knowledge_text)
 
+    def test_promote_raw_receipt_includes_publication_fields_for_new_promotion(self):
+        from automation.pipeline.app import ForgeApp
+
+        self._write_raw_fixture(
+            "raw/captures/publication-fields.md",
+            "Publication fields raw",
+            ["network", "dns"],
+            "manual note",
+            (
+                "## Context\n\n"
+                "The gateway reboot was followed by fake DNS answers.\n\n"
+                "## Root Cause\n\n"
+                "The upstream resolver injected fake-ip ranges.\n\n"
+                "## Fix Steps\n\n"
+                "- Override the resolver.\n"
+                "- Restart the affected service.\n\n"
+                "## Verification\n\n"
+                "- Public domains resolve to public IPs.\n"
+            ),
+        )
+
+        app = ForgeApp(self.repo_root)
+        receipt = app.promote_raw("raw/captures/publication-fields.md", initiator="codex")
+
+        self.assertEqual(receipt.status, "success")
+        self.assertIn(receipt.publication_status, {"active", "draft"})
+        self.assertIsNotNone(receipt.judge_score)
+        self.assertIn(receipt.judge_decision, {"publish", "downgrade"})
+        self.assertIsInstance(receipt.eligible_for_insights, bool)
+        self.assertIsNotNone(receipt.updated_at)
+        if receipt.eligible_for_insights:
+            self.assertIsNone(receipt.excluded_reason)
+        else:
+            self.assertIsInstance(receipt.excluded_reason, str)
+
+    def test_promote_raw_already_promoted_reports_current_publication_state(self):
+        from automation.pipeline.app import ForgeApp
+
+        self._write_raw_fixture(
+            "raw/captures/already-promoted-stateful.md",
+            "Already promoted stateful raw",
+            ["workflow"],
+            "manual note",
+            "## Context\n\nA full incident record that already has knowledge.\n",
+        )
+        self._write_knowledge_fixture(
+            "knowledge/workflow/already-promoted-stateful.md",
+            "Already promoted stateful knowledge",
+            ["workflow"],
+            status="active",
+            body="Structured knowledge content.\n",
+        )
+        knowledge_path = self.repo_root / "knowledge" / "workflow" / "already-promoted-stateful.md"
+        knowledge_path.write_text(
+            knowledge_path.read_text(encoding="utf-8")
+            .replace(
+                "derived_from: [raw/captures/source.md]",
+                "derived_from: [raw/captures/already-promoted-stateful.md]",
+            )
+            .replace(
+                "status: active",
+                "status: active\njudge_score: 0.42\njudge_decision: downgrade\nrelease_reason: Legacy decision",
+            ),
+            encoding="utf-8",
+        )
+
+        app = ForgeApp(self.repo_root)
+        receipt = app.promote_raw("raw/captures/already-promoted-stateful.md", initiator="codex")
+
+        self.assertEqual(receipt.status, "skipped")
+        self.assertEqual(receipt.knowledge_ref, "knowledge/workflow/already-promoted-stateful.md")
+        self.assertEqual(receipt.publication_status, "active")
+        self.assertAlmostEqual(receipt.judge_score, 0.42, places=2)
+        self.assertEqual(receipt.judge_decision, "downgrade")
+        self.assertFalse(receipt.eligible_for_insights)
+        self.assertEqual(receipt.excluded_reason, "generic_tags_only")
+        self.assertEqual(receipt.updated_at, "2026-04-04")
+
+    def test_promote_raw_already_promoted_historical_knowledge_without_judge_metadata_returns_none(self):
+        from automation.pipeline.app import ForgeApp
+
+        self._write_raw_fixture(
+            "raw/captures/already-promoted-historical.md",
+            "Already promoted historical raw",
+            ["network"],
+            "manual note",
+            "## Context\n\nA full incident record that already has knowledge.\n",
+        )
+        self._write_knowledge_fixture(
+            "knowledge/troubleshooting/already-promoted-historical.md",
+            "Already promoted historical knowledge",
+            ["network"],
+            status="active",
+            body="Structured knowledge content.\n",
+        )
+        knowledge_path = self.repo_root / "knowledge" / "troubleshooting" / "already-promoted-historical.md"
+        knowledge_path.write_text(
+            knowledge_path.read_text(encoding="utf-8").replace(
+                "derived_from: [raw/captures/source.md]",
+                "derived_from: [raw/captures/already-promoted-historical.md]",
+            ),
+            encoding="utf-8",
+        )
+
+        app = ForgeApp(self.repo_root)
+        receipt = app.promote_raw("raw/captures/already-promoted-historical.md", initiator="codex")
+
+        self.assertEqual(receipt.status, "skipped")
+        self.assertEqual(receipt.knowledge_ref, "knowledge/troubleshooting/already-promoted-historical.md")
+        self.assertEqual(receipt.publication_status, "active")
+        self.assertIsNone(receipt.judge_score)
+        self.assertIsNone(receipt.judge_decision)
+        self.assertTrue(receipt.eligible_for_insights)
+        self.assertIsNone(receipt.excluded_reason)
+        self.assertEqual(receipt.updated_at, "2026-04-04")
+
     def test_promote_all_raw_processes_pending_and_skips_non_promotable_documents(self):
         from automation.pipeline.app import ForgeApp
 

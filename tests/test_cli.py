@@ -181,6 +181,44 @@ class ForgeCliTests(unittest.TestCase):
                 self.assertEqual(payload["content"], "Context:\nA remote file note.\n")
                 self.assertEqual(payload["source_ref"], str(source_path))
 
+    def test_cli_remote_promote_ready_forwards_operation_id(self):
+        from automation.pipeline.cli import main
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            config_home = Path(tempdir) / "config"
+            with patch.dict(os.environ, {"XDG_CONFIG_HOME": str(config_home)}, clear=False):
+                main(
+                    [
+                        "login",
+                        "--server",
+                        "http://127.0.0.1:8000",
+                        "--token",
+                        "secret-token",
+                    ]
+                )
+
+                stdout = StringIO()
+                with patch("automation.pipeline.cli.execute_remote_command") as remote_command:
+                    remote_command.return_value = (0, {"status": "queued", "operation_id": "op-ready-1"})
+                    with redirect_stdout(stdout):
+                        exit_code = main(
+                            [
+                                "promote-ready",
+                                "--initiator",
+                                "codex",
+                                "--dry-run",
+                                "--detach",
+                                "--operation-id",
+                                "op-ready-1",
+                            ]
+                        )
+
+                self.assertEqual(exit_code, 0)
+                payload = remote_command.call_args.args[2]
+                self.assertEqual(payload["operation_id"], "op-ready-1")
+                self.assertTrue(payload["dry_run"])
+                self.assertTrue(payload["detach"])
+
     def test_cli_serve_accepts_repo_and_state_roots_after_command(self):
         from automation.pipeline.cli import main
 
@@ -239,6 +277,51 @@ class ForgeCliTests(unittest.TestCase):
             self.assertEqual(exit_code, 1)
             payload = json.loads(stdout.getvalue())
             self.assertEqual(payload["status"], "failed")
+
+    def test_cli_knowledge_get_returns_status_json(self):
+        from automation.pipeline.cli import main
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            repo_root = Path(tempdir)
+            knowledge_path = repo_root / "knowledge" / "troubleshooting" / "example.md"
+            knowledge_path.parent.mkdir(parents=True, exist_ok=True)
+            knowledge_path.write_text(
+                (
+                    "---\n"
+                    "title: Example knowledge\n"
+                    "created: 2026-04-04\n"
+                    "updated: 2026-04-05\n"
+                    "tags: [network, dns]\n"
+                    "status: active\n"
+                    "judge_score: 0.91\n"
+                    "judge_decision: publish\n"
+                    "release_reason: Meets the release bar.\n"
+                    "reuse_count: 0\n"
+                    "derived_from: [raw/captures/example.md]\n"
+                    "---\n\n"
+                    "# Example knowledge\n\n"
+                    "Reusable DNS troubleshooting knowledge.\n"
+                ),
+                encoding="utf-8",
+            )
+
+            stdout = StringIO()
+            with redirect_stdout(stdout):
+                exit_code = main(
+                    [
+                        "--repo-root",
+                        str(repo_root),
+                        "knowledge",
+                        "get",
+                        "knowledge/troubleshooting/example.md",
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            payload = json.loads(stdout.getvalue())
+            self.assertEqual(payload["status"], "success")
+            self.assertEqual(payload["knowledge_ref"], "knowledge/troubleshooting/example.md")
+            self.assertEqual(payload["publication_status"], "active")
 
     def test_cli_inject_command_writes_receipt_json(self):
         from automation.pipeline.cli import main
@@ -994,6 +1077,68 @@ class ForgeCliTests(unittest.TestCase):
             self.assertEqual(payload["status"], "success")
             self.assertIsNotNone(payload["insight_ref"])
             self.assertIsNotNone(payload["evidence_trace_ref"])
+
+    def test_cli_explain_insight_returns_trace_summary(self):
+        from automation.pipeline.cli import main
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            repo_root = Path(tempdir)
+            knowledge_dir = repo_root / "knowledge" / "troubleshooting"
+            knowledge_dir.mkdir(parents=True)
+            for idx in range(2):
+                (knowledge_dir / "note-{0}.md".format(idx)).write_text(
+                    (
+                        "---\n"
+                        "title: Note {0}\n"
+                        "created: 2026-04-04\n"
+                        "updated: 2026-04-04\n"
+                        "tags: [network, dns]\n"
+                        "status: active\n"
+                        "judge_score: 0.92\n"
+                        "judge_decision: publish\n"
+                        "release_reason: Meets the release bar.\n"
+                        "reuse_count: 0\n"
+                        "derived_from: [raw/captures/source-{0}.md]\n"
+                        "---\n\n"
+                        "# Note {0}\n\n"
+                        "Reusable DNS troubleshooting knowledge.\n"
+                    ).format(idx),
+                    encoding="utf-8",
+                )
+
+            synthesize_stdout = StringIO()
+            with redirect_stdout(synthesize_stdout):
+                synthesize_exit_code = main(
+                    [
+                        "--repo-root",
+                        str(repo_root),
+                        "synthesize-insights",
+                        "--initiator",
+                        "codex",
+                    ]
+                )
+            self.assertEqual(synthesize_exit_code, 0)
+            receipt_ref = json.loads(synthesize_stdout.getvalue())["receipt_ref"]
+
+            stdout = StringIO()
+            with redirect_stdout(stdout):
+                exit_code = main(
+                    [
+                        "--repo-root",
+                        str(repo_root),
+                        "explain",
+                        "insight",
+                        receipt_ref,
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            payload = json.loads(stdout.getvalue())
+            self.assertEqual(payload["status"], "success")
+            self.assertEqual(payload["receipt_ref"], receipt_ref)
+            self.assertIn("selected_paths", payload)
+            self.assertIn("candidate_clusters", payload)
+            self.assertIn("excluded_documents", payload)
 
     def test_cli_replay_failure_command_replays_archived_case(self):
         from automation.pipeline.app import ForgeApp
