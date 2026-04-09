@@ -7,6 +7,8 @@ class PublicDocsContractTests(unittest.TestCase):
         text = (Path(__file__).resolve().parents[1] / "README.md").read_text(encoding="utf-8")
         self.assertIn("install-public-cli.sh", text)
         self.assertIn("forge login", text)
+        self.assertIn("using-forge", text)
+        self.assertIn("forge doctor", text)
 
     def test_skill_does_not_assume_private_repo_access(self):
         text = (
@@ -42,6 +44,16 @@ class PublicDocsContractTests(unittest.TestCase):
         self.assertIn("forge receipt get <selector>", text)
         self.assertIn("forge job get <job_id>", text)
         self.assertIn("trigger semantics remain explicit", text)
+
+    def test_release_doc_mentions_skill_bundle(self):
+        text = (
+            Path(__file__).resolve().parents[1]
+            / "docs"
+            / "management"
+            / "forge-release-distribution.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("skill bundle", text)
+        self.assertIn("forge_skill_using-forge_", text)
 
 
 if __name__ == "__main__":

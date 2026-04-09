@@ -17,14 +17,22 @@ commands listed below.
 
 All of these commands work against a published Forge CLI binary and a configured service endpoint.
 You do not need a checkout of the private `forge-data` repository to operate the public runtime surface.
+The public installer also bundles the `using-forge` skill for supported local agent skill directories.
 
 ## Prerequisites
 
 You only need:
 
 - a Forge binary
+- the bundled `using-forge` skill if you are operating through an AI tool that consumes local skills
 - a service URL
 - a bearer token
+
+Public install entrypoint:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hoastyle/forge-public/main/scripts/release/install-public-cli.sh | bash
+```
 
 Configure the connection once:
 
@@ -85,6 +93,7 @@ forge job get inject-<jobid>
 ## Boundary
 
 - This repo publishes the CLI, service runtime, and public operator contract
+- It also publishes the `using-forge` skill bundle that tracks the public operator contract
 - It does not expose private `raw/`, `knowledge/`, or `insights`
 - Self-hosted service operators should use `docs/management/self-hosting.md`
 - Private data-repo maintenance stays outside this public repo boundary
