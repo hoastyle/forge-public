@@ -39,6 +39,18 @@ jobs:
           name: cli-${{ matrix.goos }}-${{ matrix.goarch }}
           path: dist/public/*
 
+  build-skill:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build public skill bundle
+        run: |
+          bash scripts/release/build-public-skill.sh "${GITHUB_REF_NAME}" dist/public-skill
+      - uses: actions/upload-artifact@v4
+        with:
+          name: skill-using-forge
+          path: dist/public-skill/*
+
   publish-image:
     runs-on: ubuntu-latest
     steps:
@@ -58,17 +70,22 @@ jobs:
             ghcr.io/hoastyle/forge-public:sha-${{ github.sha }}
 
   publish-release:
-    needs: [build-cli, publish-image]
+    needs: [build-cli, build-skill, publish-image]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
         with:
           pattern: cli-*
           path: dist/release-artifacts
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: skill-*
+          path: dist/release-artifacts
       - name: Bundle release assets
         run: |
           mkdir -p dist/release-bundle
           find dist/release-artifacts -type f -name 'forge_*.tar.gz' -exec cp {} dist/release-bundle/ \;
+          find dist/release-artifacts -type f -name 'forge_skill_using-forge_*.tar.gz' -exec cp {} dist/release-bundle/ \;
           find dist/release-artifacts -type f -name 'checksums-*.txt' -print0 \
             | sort -z \
             | xargs -0 cat > dist/release-bundle/checksums.txt

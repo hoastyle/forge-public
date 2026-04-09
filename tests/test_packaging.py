@@ -113,6 +113,7 @@ class PackagingTests(unittest.TestCase):
             repo_root / "go.mod",
             repo_root / "cmd" / "forge" / "main.go",
             repo_root / "scripts" / "release" / "build-public-cli.sh",
+            repo_root / "scripts" / "release" / "build-public-skill.sh",
             repo_root / "scripts" / "release" / "install-public-cli.sh",
             repo_root / "scripts" / "release" / "render-homebrew-formula.sh",
             repo_root / "packaging" / "homebrew" / "forge.rb.tmpl",
@@ -134,6 +135,7 @@ class PackagingTests(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn("pattern: cli-*", release_workflow)
+        self.assertIn("pattern: skill-*", release_workflow)
 
     def test_release_doc_mentions_ghcr_image(self):
         doc_path = REPO_ROOT / "docs" / "management" / "forge-release-distribution.md"
@@ -174,6 +176,23 @@ class PackagingTests(unittest.TestCase):
             self.assertTrue((Path(tempdir) / "checksums.txt").exists())
             archives = list(Path(tempdir).glob("forge_0.1.0_*.tar.gz"))
             self.assertEqual(len(archives), 1)
+
+    def test_release_build_script_builds_skill_bundle(self):
+        if shutil.which("bash") is None:
+            self.skipTest("bash is required for skill bundle validation")
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            result = subprocess.run(
+                ["bash", "scripts/release/build-public-skill.sh", "v0.1.0", tempdir],
+                cwd=REPO_ROOT,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(result.returncode, 0, msg=result.stderr)
+            bundles = list(Path(tempdir).glob("forge_skill_using-forge_0.1.0.tar.gz"))
+            self.assertEqual(len(bundles), 1)
 
     def test_homebrew_formula_renderer_preserves_archive_url_query(self):
         if shutil.which("bash") is None:
