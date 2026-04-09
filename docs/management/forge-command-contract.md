@@ -34,7 +34,7 @@ operator-facing workflows:
 - `knowledge get` is the read-only publication status surface for one knowledge document.
 - `explain insight` is the read-only evidence trace surface for one insight receipt.
 - Receipts are the durable source of truth for completed mutations.
-- Detached mutations must be followed with `forge job get <job_id>`.
+- Remote mutations (`inject`, `promote-raw`, `promote-ready`, and `synthesize-insights`) default to detached jobs; the common completion loop is `forge job get <job_id>` followed by `forge receipt get <receipt_ref>`. Use `--wait` to perform the synchronous path that waits for the job to finish and returns the receipt inline, and treat `--detach` as a backward-compatible but usually redundant flag.
 
 ## Safe Retry
 

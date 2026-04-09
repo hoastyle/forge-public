@@ -38,7 +38,7 @@ to the Forge repository or its documents. The authoritative command list lives i
 6. Preview insight synthesis with `forge synthesize-insights --dry-run`, then confirm with `--confirm-receipt` when an exact batch must be frozen.
 7. Inspect publication state with `forge knowledge get <knowledge_ref>` when a promotion result needs explanation.
 8. Inspect outcomes with `forge receipt get <receipt_ref>` or `forge explain insight <receipt_ref>`.
-9. If a mutation was detached, poll it with `forge job get <job_id>`.
+9. Remote mutations usually return a `job_id`; poll it with `forge job get <job_id>`, then follow the reported `receipt_ref`.
 
 ## Task Routing
 
@@ -62,8 +62,8 @@ to the Forge repository or its documents. The authoritative command list lives i
   - use `forge knowledge get <knowledge_ref>`
 - Explain one insight receipt's evidence selection:
   - use `forge explain insight <receipt_ref>`
-- Run a long mutation asynchronously:
-  - add `--detach`, then poll with `forge job get <job_id>`
+- Run a mutation synchronously when the caller must block for the receipt:
+  - add `--wait`
 - Diagnose provider / relay / service state:
   - use `forge doctor`
 
@@ -81,6 +81,7 @@ to the Forge repository or its documents. The authoritative command list lives i
 - For retry-safe automation, pin `--operation-id <id>` on remote mutations and reuse the exact same value on retries.
 - For insight synthesis, inspect `evidence_trace_ref` to understand evidence filtering, document `quality_score` /
   `quality_signals`, component `quality_score`, and the final selection.
+- Remote mutations (`inject`, `promote-raw`, `promote-ready`, `synthesize-insights`) default to detached jobs; the usual completion loop is `forge job get <job_id>` followed by `forge receipt get <receipt_ref>`. Callers use `--wait` for the synchronous path and may continue specifying `--detach` only when they need to force older caller semantics.
 
 ## References
 

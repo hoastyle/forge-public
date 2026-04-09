@@ -15,6 +15,8 @@ commands listed below.
 - `forge receipt get`
 - `forge job get`
 
+Remote mutations (`inject`, `promote-raw`, `promote-ready`, `synthesize-insights`) default to detached jobs. Online operators should poll `forge job get <job_id>` and then `forge receipt get <receipt_ref>` as the normal completion loop; add `--wait` when you want synchronous behavior, and treat `--detach` as a backward-compatible but usually redundant flag.
+
 All of these commands work against a published Forge CLI binary and a configured service endpoint.
 You do not need a checkout of the private `forge-data` repository to operate the public runtime surface.
 The public installer also bundles the `using-forge` skill for supported local agent skill directories.
@@ -75,6 +77,7 @@ Run insight synthesis explicitly:
 
 ```bash
 forge synthesize-insights --initiator manual
+forge synthesize-insights --initiator manual --wait
 forge synthesize-insights --initiator manual --dry-run
 forge synthesize-insights --initiator manual --confirm-receipt state/receipts/insights/<preview>.json
 ```
@@ -87,13 +90,13 @@ Use receipts as the source of truth for completed mutations:
 forge receipt get state/receipts/inject/<id>.json
 ```
 
-If a command ran with `--detach`, poll the detached job:
+Remote mutations (even without an explicit `--detach`) return a job handle. Poll the detached job and then the receipt:
 
 ```bash
 forge job get inject-<jobid>
 ```
 
-`job_id` is only an execution handle. `receipt_ref` is the durable result pointer.
+`job_id` is only an execution handle. `receipt_ref` is the durable result pointer. Add `--wait` when a command must complete synchronously, and continue to use `--detach` only when caller semantics explicitly require it to surface.
 
 Inspect one knowledge document's publication state:
 

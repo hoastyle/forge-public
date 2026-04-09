@@ -77,11 +77,12 @@ forge synthesize-insights --confirm-receipt <receipt_ref>
 
 ```bash
 forge synthesize-insights --initiator codex
+forge synthesize-insights --initiator codex --wait
 forge synthesize-insights --dry-run --initiator codex
 forge synthesize-insights --confirm-receipt state/receipts/insights/<preview>.json --initiator codex
 ```
 
-Add `--detach` to long-running mutations when the caller should return immediately.
+Remote mutations default to detached jobs. Poll `forge job get <job_id>` and then `forge receipt get <receipt_ref>` as the typical completion loop, add `--wait` when the caller needs to remain synchronous, and treat `--detach` as a backward-compatible but usually redundant flag.
 
 ## Inspect Knowledge Status
 
@@ -101,7 +102,7 @@ forge explain insight state/receipts/insights/<id>.json
 forge promote-ready --initiator codex --dry-run --operation-id nightly-ready-preview-20260409
 forge synthesize-insights --dry-run --initiator codex --operation-id nightly-insight-preview-20260409
 forge synthesize-insights --confirm-receipt state/receipts/insights/<preview>.json --initiator codex --operation-id nightly-insight-confirm-20260409
-forge synthesize-insights --initiator codex --detach --operation-id nightly-insight-build-20260409
+forge synthesize-insights --initiator codex --operation-id nightly-insight-build-20260409
 ```
 
 ## Receipts And Jobs
@@ -111,7 +112,7 @@ forge receipt get state/receipts/inject/<id>.json
 forge job get inject-<jobid>
 ```
 
-Use `receipt get` for completed operations and `job get` for detached background jobs.
+Remote mutations present a job handle even without `--detach`; poll `job get` and then `receipt get`. Add `--wait` for synchronous expectations and keep `--detach` only if you must surface explicit asynchronous behavior.
 
 ## Maintainer Recipes
 
