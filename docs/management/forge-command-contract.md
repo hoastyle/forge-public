@@ -18,6 +18,8 @@ operator-facing workflows:
 - `forge promote-ready --dry-run --limit <n> --initiator <initiator>`
 - `forge promote-ready --confirm-receipt <receipt_ref> --initiator <initiator>`
 - `forge synthesize-insights --initiator <initiator>`
+- `forge synthesize-insights --dry-run --initiator <initiator>`
+- `forge synthesize-insights --confirm-receipt <receipt_ref> --initiator <initiator>`
 - `forge knowledge get <knowledge_ref>`
 - `forge explain insight <receipt_ref>`
 - `forge receipt get <selector>`
@@ -51,8 +53,6 @@ must not be advertised by public docs or the `using-forge` skill:
 
 - `forge review-sensitive`
 - `forge redact-raw`
-- `forge synthesize-insights --dry-run`
-- `forge synthesize-insights --confirm-receipt <receipt_ref>`
 
 ## Maintainer Entry Points
 

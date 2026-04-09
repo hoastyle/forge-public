@@ -313,17 +313,25 @@ func runSynthesize(args []string) int {
 	token := fs.String("token", "", "")
 	initiator := fs.String("initiator", "manual", "")
 	detach := fs.Bool("detach", false, "")
+	dryRun := fs.Bool("dry-run", false, "")
+	confirmReceipt := fs.String("confirm-receipt", "", "")
 	operationID := fs.String("operation-id", "", "")
 	if ok, code := parseFlags(fs, args, synthesizeHelpText()); !ok {
 		return code
+	}
+	if *dryRun && strings.TrimSpace(*confirmReceipt) != "" {
+		printFailure("synthesize-insights does not allow --confirm-receipt together with --dry-run")
+		return 2
 	}
 	conn, code := requireConnection(*server, *token)
 	if code != 0 {
 		return code
 	}
 	payload := map[string]interface{}{
-		"initiator": *initiator,
-		"detach":    *detach,
+		"initiator":       *initiator,
+		"dry_run":         *dryRun,
+		"confirm_receipt": strings.TrimSpace(*confirmReceipt),
+		"detach":          *detach,
 	}
 	if strings.TrimSpace(*operationID) != "" {
 		payload["operation_id"] = strings.TrimSpace(*operationID)
@@ -812,12 +820,14 @@ func promoteReadyHelpText() string {
 
 func synthesizeHelpText() string {
 	return strings.Join([]string{
-		"usage: forge synthesize-insights [--server <url>] [--token <token>] [--initiator <initiator>] [--detach]",
+		"usage: forge synthesize-insights [--server <url>] [--token <token>] [--initiator <initiator>] [--dry-run] [--confirm-receipt <receipt_ref>] [--detach]",
 		"",
 		"Options:",
 		"  --server <url>             override configured Forge service URL",
 		"  --token <token>            override configured bearer token",
 		"  --initiator <initiator>    provenance initiator value",
+		"  --dry-run                  preview the synthesis outcome without committing",
+		"  --confirm-receipt <receipt_ref>  execute a previously previewed synthesis",
 		"  --detach                   queue the mutation and return a job id",
 		"  --operation-id <id>        stable mutation identifier for safe retries",
 	}, "\n")

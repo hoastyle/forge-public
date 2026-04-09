@@ -78,6 +78,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     synthesize = subparsers.add_parser("synthesize-insights")
     synthesize.add_argument("--initiator", default="manual", type=parse_initiator, choices=ALLOWED_INITIATORS)
+    synthesize.add_argument("--dry-run", action="store_true")
+    synthesize.add_argument("--confirm-receipt")
     synthesize.add_argument("--detach", action="store_true")
     synthesize.add_argument("--operation-id")
 
@@ -223,7 +225,13 @@ def main(argv=None) -> int:
         return 0 if receipt.status == "success" else 1
 
     if args.command == "synthesize-insights":
-        receipt = app.synthesize_insights(initiator=args.initiator)
+        if args.confirm_receipt and args.dry_run:
+            parser.error("synthesize-insights does not allow --confirm-receipt together with --dry-run")
+        receipt = app.synthesize_insights(
+            initiator=args.initiator,
+            dry_run=args.dry_run,
+            confirm_receipt_ref=args.confirm_receipt,
+        )
         sys.stdout.write(json.dumps(receipt.to_dict(), indent=2, ensure_ascii=False) + "\n")
         return 0 if receipt.status != "failed" else 1
 
@@ -487,6 +495,8 @@ def _build_remote_payload(args) -> Dict[str, Any]:
     if args.command == "synthesize-insights":
         return {
             "initiator": args.initiator,
+            "dry_run": args.dry_run,
+            "confirm_receipt": args.confirm_receipt,
             "detach": args.detach,
             "operation_id": args.operation_id,
         }

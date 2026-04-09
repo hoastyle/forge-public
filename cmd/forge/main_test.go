@@ -77,6 +77,114 @@ func TestRunPromoteReadyHelpShowsSupportedFlagsOnly(t *testing.T) {
 	}
 }
 
+func TestRunSynthesizeHelpShowsExpectedFlags(t *testing.T) {
+	code, payload := captureRun(t, []string{"synthesize-insights", "--help"})
+	if code != 0 {
+		t.Fatalf("code=%d payload=%v", code, payload)
+	}
+	if payload["status"] != "success" {
+		t.Fatalf("payload=%v", payload)
+	}
+	message, _ := payload["message"].(string)
+	for _, expected := range []string{"--initiator", "--dry-run", "--confirm-receipt", "--detach", "--operation-id"} {
+		if !strings.Contains(message, expected) {
+			t.Fatalf("missing %s in %q", expected, message)
+		}
+	}
+}
+
+func TestRunSynthesizeForwardsDryRunAndConfirmReceipt(t *testing.T) {
+	t.Run("dry run", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/v1/synthesize-insights" {
+				t.Fatalf("unexpected path %s", r.URL.Path)
+			}
+			var payload map[string]interface{}
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatalf("decode request: %v", err)
+			}
+			if payload["dry_run"] != true {
+				t.Fatalf("dry_run not true payload=%v", payload)
+			}
+			if payload["confirm_receipt"] != "" {
+				t.Fatalf("unexpected confirm_receipt payload=%v", payload)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			if err := json.NewEncoder(w).Encode(map[string]interface{}{"status": "queued"}); err != nil {
+				t.Fatalf("encode response: %v", err)
+			}
+		}))
+		defer server.Close()
+
+		code, payload := captureRun(t, []string{
+			"synthesize-insights",
+			"--server", server.URL,
+			"--token", "secret",
+			"--dry-run",
+		})
+		if code != 0 {
+			t.Fatalf("code=%d payload=%v", code, payload)
+		}
+		if payload["status"] != "queued" {
+			t.Fatalf("unexpected payload=%v", payload)
+		}
+	})
+
+	t.Run("confirm receipt", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/v1/synthesize-insights" {
+				t.Fatalf("unexpected path %s", r.URL.Path)
+			}
+			var payload map[string]interface{}
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatalf("decode request: %v", err)
+			}
+			if payload["dry_run"] != false {
+				t.Fatalf("unexpected dry_run payload=%v", payload)
+			}
+			if payload["confirm_receipt"] != "receipt/abc" {
+				t.Fatalf("confirm_receipt missing payload=%v", payload)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			if err := json.NewEncoder(w).Encode(map[string]interface{}{"status": "queued"}); err != nil {
+				t.Fatalf("encode response: %v", err)
+			}
+		}))
+		defer server.Close()
+
+		code, payload := captureRun(t, []string{
+			"synthesize-insights",
+			"--server", server.URL,
+			"--token", "secret",
+			"--confirm-receipt", "receipt/abc",
+		})
+		if code != 0 {
+			t.Fatalf("code=%d payload=%v", code, payload)
+		}
+		if payload["status"] != "queued" {
+			t.Fatalf("unexpected payload=%v", payload)
+		}
+	})
+}
+
+func TestRunSynthesizeRejectsConfirmReceiptWithDryRun(t *testing.T) {
+	code, payload := captureRun(t, []string{
+		"synthesize-insights",
+		"--dry-run",
+		"--confirm-receipt", "receipt/abc",
+	})
+	if code != 2 {
+		t.Fatalf("code=%d payload=%v", code, payload)
+	}
+	if payload["status"] != "failed" {
+		t.Fatalf("payload=%v", payload)
+	}
+	message, _ := payload["message"].(string)
+	if !strings.Contains(message, "--confirm-receipt") || !strings.Contains(message, "--dry-run") {
+		t.Fatalf("unexpected message %q", message)
+	}
+}
+
 func TestPromoteReadyForwardsOperationID(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/promote-ready" {

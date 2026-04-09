@@ -452,9 +452,20 @@ class ForgeApp:
         self._write_json(receipt_path, receipt.to_dict())
         return receipt
 
-    def synthesize_insights(self, initiator: str = "manual") -> InsightSynthesisReceipt:
+    def synthesize_insights(
+        self,
+        initiator: str = "manual",
+        dry_run: bool = False,
+        confirm_receipt_ref: Optional[str] = None,
+    ) -> InsightSynthesisReceipt:
         initiator = normalize_initiator(initiator)
         synthesis_id = self._new_id()
+        if confirm_receipt_ref:
+            return self._confirm_insight_synthesis(
+                synthesis_id=synthesis_id,
+                initiator=initiator,
+                confirm_receipt_ref=confirm_receipt_ref,
+            )
         runtime_lock = load_or_create_runtime_lock(self.app_root / "automation" / "compiled" / "runtime.lock.json")
         knowledge_docs = [doc for doc in load_knowledge_documents(self.repo_root) if doc["status"] != "draft"]
         evidence_docs, evidence_trace_ref = self._select_insight_evidence_with_trace(
@@ -462,34 +473,50 @@ class ForgeApp:
             knowledge_docs=knowledge_docs,
             min_evidence=runtime_lock["runtime"]["insight"]["min_evidence"],
         )
+        evidence_manifest = self._build_insight_evidence_manifest(evidence_docs)
 
         if not evidence_docs:
             receipt = InsightSynthesisReceipt(
                 id=synthesis_id,
                 status="skipped",
                 initiator=initiator,
+                dry_run=dry_run,
                 evidence_refs=[],
+                evidence_manifest=[],
                 evidence_trace_ref=evidence_trace_ref,
                 message="no evidence cluster met min_evidence",
             )
-            receipt_path = self.state_root / "receipts" / "insights" / "{0}.json".format(synthesis_id)
-            self._write_json(receipt_path, receipt.to_dict())
-            receipt.receipt_ref = self._relative(receipt_path)
-            self._write_json(receipt_path, receipt.to_dict())
-            self._archive_failure_case(
-                stage="insights",
-                category="insight_skipped",
-                status=receipt.status,
-                reason=receipt.message or "insight synthesis skipped",
-                initiator=initiator,
-                refs={
-                    "receipt_ref": receipt.receipt_ref,
-                    "evidence_trace_ref": receipt.evidence_trace_ref,
-                },
-                replay_command="synthesize_insights",
-                replay_args={},
-            )
+            receipt = self._write_insight_receipt(receipt)
+            if not dry_run:
+                self._archive_failure_case(
+                    stage="insights",
+                    category="insight_skipped",
+                    status=receipt.status,
+                    reason=receipt.message or "insight synthesis skipped",
+                    initiator=initiator,
+                    refs={
+                        "receipt_ref": receipt.receipt_ref,
+                        "evidence_trace_ref": receipt.evidence_trace_ref,
+                    },
+                    replay_command="synthesize_insights",
+                    replay_args={},
+                )
             return receipt
+
+        if dry_run:
+            return self._write_insight_receipt(
+                InsightSynthesisReceipt(
+                    id=synthesis_id,
+                    status="success",
+                    initiator=initiator,
+                    dry_run=True,
+                    evidence_refs=[str(doc["path"]) for doc in evidence_docs],
+                    evidence_manifest=evidence_manifest,
+                    evidence_trace_ref=evidence_trace_ref,
+                    receipt_ref=None,
+                    message="insight synthesis dry run completed",
+                )
+            )
 
         try:
             result = self._run_insight_pipeline(
@@ -504,6 +531,7 @@ class ForgeApp:
                     synthesis_id=synthesis_id,
                     initiator=initiator,
                     evidence_refs=[doc["path"] for doc in evidence_docs],
+                    evidence_manifest=evidence_manifest,
                     error=str(exc),
                     evidence_trace_ref=evidence_trace_ref,
                     llm_trace_ref=partial_trace_ref,
@@ -515,6 +543,7 @@ class ForgeApp:
             status="success",
             initiator=initiator,
             evidence_refs=[doc["path"] for doc in evidence_docs],
+            evidence_manifest=evidence_manifest,
             evidence_trace_ref=evidence_trace_ref,
             insight_ref=result["insight_ref"],
             candidate_ref=result["candidate_ref"],
@@ -526,10 +555,144 @@ class ForgeApp:
             receipt_ref=None,
             message="insight synthesis completed",
         )
-        receipt_path = self.state_root / "receipts" / "insights" / "{0}.json".format(synthesis_id)
-        self._write_json(receipt_path, receipt.to_dict())
-        receipt.receipt_ref = self._relative(receipt_path)
-        self._write_json(receipt_path, receipt.to_dict())
+        receipt = self._write_insight_receipt(receipt)
+        if result["insight_status"] != "active":
+            self._archive_failure_case(
+                stage="insights",
+                category="insight_draft",
+                status=result["insight_status"],
+                reason=result["failure_reason"],
+                initiator=initiator,
+                pipeline_mode=result["pipeline_mode"],
+                refs={
+                    "receipt_ref": receipt.receipt_ref,
+                    "insight_ref": result["insight_ref"],
+                    "candidate_ref": result["candidate_ref"],
+                    "critic_ref": result["critic_ref"],
+                    "judge_ref": result["judge_ref"],
+                    "evidence_trace_ref": receipt.evidence_trace_ref,
+                    "llm_trace_ref": result["llm_trace_ref"],
+                    "relay_request_ids": result["relay_request_ids"],
+                },
+                replay_command="synthesize_insights",
+                replay_args={},
+            )
+        return receipt
+
+    def _confirm_insight_synthesis(
+        self,
+        synthesis_id: str,
+        initiator: str,
+        confirm_receipt_ref: str,
+    ) -> InsightSynthesisReceipt:
+        try:
+            preview_payload = self.read_receipt(confirm_receipt_ref)
+        except FileNotFoundError:
+            return self._write_insight_receipt(
+                InsightSynthesisReceipt(
+                    id=synthesis_id,
+                    status="failed",
+                    initiator=initiator,
+                    dry_run=False,
+                    confirmed_from_receipt_ref=confirm_receipt_ref,
+                    receipt_ref=None,
+                    message="confirm receipt not found",
+                )
+            )
+        evidence_trace_ref = str(preview_payload.get("evidence_trace_ref") or "").strip() or None
+        if not preview_payload.get("dry_run"):
+            return self._write_insight_receipt(
+                InsightSynthesisReceipt(
+                    id=synthesis_id,
+                    status="failed",
+                    initiator=initiator,
+                    dry_run=False,
+                    confirmed_from_receipt_ref=confirm_receipt_ref,
+                    evidence_refs=list(preview_payload.get("evidence_refs") or []),
+                    evidence_manifest=list(preview_payload.get("evidence_manifest") or []),
+                    evidence_trace_ref=evidence_trace_ref,
+                    receipt_ref=None,
+                    message="confirm receipt must reference a dry-run insight synthesis receipt",
+                )
+            )
+
+        manifest = list(preview_payload.get("evidence_manifest") or [])
+        if not manifest:
+            return self._write_insight_receipt(
+                InsightSynthesisReceipt(
+                    id=synthesis_id,
+                    status="failed",
+                    initiator=initiator,
+                    dry_run=False,
+                    confirmed_from_receipt_ref=confirm_receipt_ref,
+                    evidence_refs=list(preview_payload.get("evidence_refs") or []),
+                    evidence_manifest=[],
+                    evidence_trace_ref=evidence_trace_ref,
+                    receipt_ref=None,
+                    message="confirm receipt is missing evidence manifest",
+                )
+            )
+
+        evidence_docs, failure_message = self._resolve_confirmed_insight_evidence(manifest)
+        if failure_message is not None:
+            return self._write_insight_receipt(
+                InsightSynthesisReceipt(
+                    id=synthesis_id,
+                    status="failed",
+                    initiator=initiator,
+                    dry_run=False,
+                    confirmed_from_receipt_ref=confirm_receipt_ref,
+                    evidence_refs=[str(item.get("knowledge_ref") or "") for item in manifest if item.get("knowledge_ref")],
+                    evidence_manifest=manifest,
+                    evidence_trace_ref=evidence_trace_ref,
+                    receipt_ref=None,
+                    message=failure_message,
+                )
+            )
+
+        runtime_lock = load_or_create_runtime_lock(self.app_root / "automation" / "compiled" / "runtime.lock.json")
+        try:
+            result = self._run_insight_pipeline(
+                synthesis_id=synthesis_id,
+                runtime_lock=runtime_lock,
+                evidence_docs=evidence_docs,
+            )
+        except Exception as exc:
+            partial_trace_ref = self._extract_trace_ref(exc)
+            if partial_trace_ref:
+                failed = self._write_insight_pipeline_failure_receipt(
+                    synthesis_id=synthesis_id,
+                    initiator=initiator,
+                    evidence_refs=[str(doc["path"]) for doc in evidence_docs],
+                    evidence_manifest=manifest,
+                    error=str(exc),
+                    evidence_trace_ref=evidence_trace_ref,
+                    llm_trace_ref=partial_trace_ref,
+                    pipeline_mode="heuristic-fallback",
+                )
+                failed.confirmed_from_receipt_ref = confirm_receipt_ref
+                return self._write_insight_receipt(failed)
+            raise
+        receipt = InsightSynthesisReceipt(
+            id=synthesis_id,
+            status="success",
+            initiator=initiator,
+            dry_run=False,
+            confirmed_from_receipt_ref=confirm_receipt_ref,
+            evidence_refs=[str(doc["path"]) for doc in evidence_docs],
+            evidence_manifest=manifest,
+            evidence_trace_ref=evidence_trace_ref,
+            insight_ref=result["insight_ref"],
+            candidate_ref=result["candidate_ref"],
+            critic_ref=result["critic_ref"],
+            judge_ref=result["judge_ref"],
+            pipeline_mode=result["pipeline_mode"],
+            llm_trace_ref=result["llm_trace_ref"],
+            relay_request_ids=result["relay_request_ids"],
+            receipt_ref=None,
+            message="insight synthesis confirmed from dry-run receipt",
+        )
+        receipt = self._write_insight_receipt(receipt)
         if result["insight_status"] != "active":
             self._archive_failure_case(
                 stage="insights",
@@ -1561,6 +1724,7 @@ class ForgeApp:
         synthesis_id: str,
         initiator: str,
         evidence_refs: List[str],
+        evidence_manifest: Optional[List[Dict[str, str]]],
         error: str,
         evidence_trace_ref: Optional[str],
         llm_trace_ref: str,
@@ -1571,6 +1735,7 @@ class ForgeApp:
             status="failed",
             initiator=initiator,
             evidence_refs=evidence_refs,
+            evidence_manifest=list(evidence_manifest or []),
             evidence_trace_ref=evidence_trace_ref,
             pipeline_mode=pipeline_mode,
             llm_trace_ref=llm_trace_ref,
@@ -1578,10 +1743,7 @@ class ForgeApp:
             receipt_ref=None,
             message=error,
         )
-        receipt_path = self.state_root / "receipts" / "insights" / "{0}.json".format(synthesis_id)
-        self._write_json(receipt_path, receipt.to_dict())
-        receipt.receipt_ref = self._relative(receipt_path)
-        self._write_json(receipt_path, receipt.to_dict())
+        receipt = self._write_insight_receipt(receipt)
         self._archive_failure_case(
             stage="insights",
             category="insight_pipeline_failure",
@@ -2043,6 +2205,49 @@ class ForgeApp:
             if not eligible_tags:
                 excluded_reason = "generic_tags_only"
         return {"eligible_tags": eligible_tags, "excluded_reason": excluded_reason}
+
+    def _build_insight_evidence_manifest(self, evidence_docs: List[Dict[str, object]]) -> List[Dict[str, str]]:
+        manifest: List[Dict[str, str]] = []
+        for doc in evidence_docs:
+            knowledge_ref = str(doc["path"])
+            path = self.repo_root / knowledge_ref
+            manifest.append(
+                {
+                    "knowledge_ref": knowledge_ref,
+                    "fingerprint": self._content_digest(path.read_text(encoding="utf-8")),
+                }
+            )
+        return manifest
+
+    def _resolve_confirmed_insight_evidence(
+        self,
+        manifest: List[Dict[str, str]],
+    ) -> tuple[List[Dict[str, object]], Optional[str]]:
+        evidence_docs: List[Dict[str, object]] = []
+        for item in manifest:
+            knowledge_ref = str(item.get("knowledge_ref") or "").strip()
+            fingerprint = str(item.get("fingerprint") or "").strip()
+            if not knowledge_ref or not fingerprint:
+                return [], "confirm receipt is missing evidence manifest"
+
+            path = self.repo_root / knowledge_ref
+            if not path.exists():
+                return [], "knowledge evidence missing since preview: {0}".format(knowledge_ref)
+
+            doc = self._find_knowledge_document(knowledge_ref)
+            if doc is None:
+                return [], "knowledge evidence missing since preview: {0}".format(knowledge_ref)
+
+            evaluation = self._evaluate_knowledge_doc_for_insights(doc)
+            if evaluation["excluded_reason"] is not None:
+                return [], "knowledge evidence is no longer eligible: {0}".format(knowledge_ref)
+
+            current_fingerprint = self._content_digest(path.read_text(encoding="utf-8"))
+            if current_fingerprint != fingerprint:
+                return [], "knowledge evidence drifted since preview: {0}".format(knowledge_ref)
+
+            evidence_docs.append(doc)
+        return evidence_docs, None
 
     def _annotate_raw_distillation(self, raw_ref: str, knowledge_ref: str) -> None:
         raw_path = self.repo_root / raw_ref
@@ -2539,6 +2744,13 @@ class ForgeApp:
 
     def _write_ready_promotion_batch_receipt(self, receipt: ReadyPromotionBatchReceipt) -> ReadyPromotionBatchReceipt:
         receipt_path = self.state_root / "receipts" / "ready_promote" / "{0}.json".format(receipt.id)
+        self._write_json(receipt_path, receipt.to_dict())
+        receipt.receipt_ref = self._relative(receipt_path)
+        self._write_json(receipt_path, receipt.to_dict())
+        return receipt
+
+    def _write_insight_receipt(self, receipt: InsightSynthesisReceipt) -> InsightSynthesisReceipt:
+        receipt_path = self.state_root / "receipts" / "insights" / "{0}.json".format(receipt.id)
         self._write_json(receipt_path, receipt.to_dict())
         receipt.receipt_ref = self._relative(receipt_path)
         self._write_json(receipt_path, receipt.to_dict())

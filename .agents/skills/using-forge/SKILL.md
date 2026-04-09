@@ -35,7 +35,7 @@ to the Forge repository or its documents. The authoritative command list lives i
 3. Capture material with `forge inject --text`, `forge inject --file`, or `forge inject --feishu-link`.
 4. Review actionable backlog with `forge review-queue`.
 5. Promote ready raw explicitly with `forge promote-ready`, or use `--dry-run` plus `--confirm-receipt`.
-6. Synthesize patterns with `forge synthesize-insights`.
+6. Preview insight synthesis with `forge synthesize-insights --dry-run`, then confirm with `--confirm-receipt` when an exact batch must be frozen.
 7. Inspect publication state with `forge knowledge get <knowledge_ref>` when a promotion result needs explanation.
 8. Inspect outcomes with `forge receipt get <receipt_ref>` or `forge explain insight <receipt_ref>`.
 9. If a mutation was detached, poll it with `forge job get <job_id>`.
@@ -54,6 +54,10 @@ to the Forge repository or its documents. The authoritative command list lives i
   - use `forge promote-raw raw/...md`
 - Run an explicit insight synthesis:
   - use `forge synthesize-insights`
+- Preview an insight batch before execution:
+  - use `forge synthesize-insights --dry-run`
+- Execute exactly the previewed insight batch:
+  - use `forge synthesize-insights --confirm-receipt <receipt_ref>`
 - Inspect one knowledge document's publication state:
   - use `forge knowledge get <knowledge_ref>`
 - Explain one insight receipt's evidence selection:
@@ -70,6 +74,9 @@ to the Forge repository or its documents. The authoritative command list lives i
 - Detached mutations return a `job_id`; they do not imply success until `forge job get` reports `status=success`.
 - For `promote-ready`, use the batch receipt as the execution contract:
   - dry-run receipts expose the previewed batch
+  - confirmed execution receipts link back through `confirmed_from_receipt_ref`
+- For `synthesize-insights`, use the insight receipt as the execution contract:
+  - dry-run receipts expose `evidence_refs`, `evidence_manifest`, and `evidence_trace_ref`
   - confirmed execution receipts link back through `confirmed_from_receipt_ref`
 - For retry-safe automation, pin `--operation-id <id>` on remote mutations and reuse the exact same value on retries.
 - For insight synthesis, inspect `evidence_trace_ref` to understand evidence filtering, document `quality_score` /

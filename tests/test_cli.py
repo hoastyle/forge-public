@@ -1078,6 +1078,112 @@ class ForgeCliTests(unittest.TestCase):
             self.assertIsNotNone(payload["insight_ref"])
             self.assertIsNotNone(payload["evidence_trace_ref"])
 
+    def test_cli_synthesize_insights_supports_dry_run(self):
+        from automation.pipeline.cli import main
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            repo_root = Path(tempdir)
+            knowledge_dir = repo_root / "knowledge" / "workflow"
+            knowledge_dir.mkdir(parents=True)
+            for idx in range(2):
+                (knowledge_dir / f"note-{idx}.md").write_text(
+                    (
+                        "---\n"
+                        f"title: Note {idx}\n"
+                        "created: 2026-04-04\n"
+                        "updated: 2026-04-04\n"
+                        "tags: [network, dns]\n"
+                        "status: active\n"
+                        "reuse_count: 0\n"
+                        "derived_from: [raw/captures/source.md]\n"
+                        "---\n\n"
+                        f"# Note {idx}\n\n"
+                        "This is reusable DNS troubleshooting knowledge.\n"
+                    ),
+                    encoding="utf-8",
+                )
+
+            stdout = StringIO()
+            with redirect_stdout(stdout):
+                exit_code = main(
+                    [
+                        "--repo-root",
+                        str(repo_root),
+                        "synthesize-insights",
+                        "--initiator",
+                        "codex",
+                        "--dry-run",
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            payload = json.loads(stdout.getvalue())
+            self.assertEqual(payload["status"], "success")
+            self.assertTrue(payload["dry_run"])
+            self.assertEqual(payload["confirmed_from_receipt_ref"], None)
+            self.assertIsNotNone(payload["evidence_trace_ref"])
+            self.assertIsNone(payload["insight_ref"])
+
+    def test_cli_remote_synthesize_insights_forwards_confirm_receipt(self):
+        from automation.pipeline.cli import main
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            config_home = Path(tempdir) / "config"
+            with patch.dict(os.environ, {"XDG_CONFIG_HOME": str(config_home)}, clear=False):
+                main(
+                    [
+                        "login",
+                        "--server",
+                        "http://127.0.0.1:8000",
+                        "--token",
+                        "secret-token",
+                    ]
+                )
+
+                stdout = StringIO()
+                with patch("automation.pipeline.cli.execute_remote_command") as remote_command:
+                    remote_command.return_value = (
+                        0,
+                        {
+                            "status": "success",
+                            "confirmed_from_receipt_ref": "state/receipts/insights/preview.json",
+                        },
+                    )
+                    with redirect_stdout(stdout):
+                        exit_code = main(
+                            [
+                                "synthesize-insights",
+                                "--initiator",
+                                "codex",
+                                "--confirm-receipt",
+                                "state/receipts/insights/preview.json",
+                            ]
+                        )
+
+                self.assertEqual(exit_code, 0)
+                payload = remote_command.call_args.args[2]
+                self.assertEqual(payload["confirm_receipt"], "state/receipts/insights/preview.json")
+                self.assertFalse(payload["dry_run"])
+
+    def test_cli_synthesize_insights_rejects_confirm_receipt_with_dry_run(self):
+        from automation.pipeline.cli import main
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            repo_root = Path(tempdir)
+            with self.assertRaises(SystemExit):
+                main(
+                    [
+                        "--repo-root",
+                        str(repo_root),
+                        "synthesize-insights",
+                        "--initiator",
+                        "codex",
+                        "--dry-run",
+                        "--confirm-receipt",
+                        "state/receipts/insights/preview.json",
+                    ]
+                )
+
     def test_cli_explain_insight_returns_trace_summary(self):
         from automation.pipeline.cli import main
 

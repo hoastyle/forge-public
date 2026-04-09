@@ -4,7 +4,12 @@ import json
 import threading
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+import datetime as _datetime
+from datetime import datetime, timezone
+
+if not hasattr(_datetime, "UTC"):
+    _datetime.UTC = timezone.utc
+UTC = _datetime.UTC
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
@@ -49,6 +54,8 @@ class PromoteReadyRequest(BaseModel):
 
 class SynthesizeRequest(BaseModel):
     initiator: str = "manual"
+    dry_run: bool = False
+    confirm_receipt: Optional[str] = None
     detach: bool = False
     operation_id: Optional[str] = None
 
@@ -295,7 +302,11 @@ def create_app(
 
     @app.post("/v1/synthesize-insights", dependencies=[Depends(require_auth)])
     def synthesize_insights(request: SynthesizeRequest):
-        runner = lambda: runtime.build_app().synthesize_insights(initiator=request.initiator)
+        runner = lambda: runtime.build_app().synthesize_insights(
+            initiator=request.initiator,
+            dry_run=request.dry_run,
+            confirm_receipt_ref=request.confirm_receipt,
+        )
         status_code, payload = runtime.execute_mutation(
             command="synthesize-insights",
             request_payload=request.model_dump(mode="python"),

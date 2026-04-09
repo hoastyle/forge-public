@@ -62,7 +62,10 @@ class InsightSynthesisReceipt:
     id: str
     status: str
     initiator: str
+    dry_run: bool = False
+    confirmed_from_receipt_ref: Optional[str] = None
     evidence_refs: List[str] = field(default_factory=list)
+    evidence_manifest: List[Dict[str, str]] = field(default_factory=list)
     evidence_trace_ref: Optional[str] = None
     insight_ref: Optional[str] = None
     candidate_ref: Optional[str] = None

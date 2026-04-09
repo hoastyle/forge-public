@@ -233,6 +233,63 @@ class ForgeServiceApiTests(unittest.TestCase):
                             break
                         time.sleep(0.05)
 
+    def test_service_synthesize_insights_supports_dry_run_requests(self):
+        try:
+            from fastapi.testclient import TestClient
+        except ImportError as exc:
+            self.skipTest(str(exc))
+        from automation.pipeline.service_api import create_app
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            repo_root = Path(tempdir) / "repo"
+            state_root = Path(tempdir) / "state-store"
+            app = create_app(repo_root=repo_root, state_root=state_root, bearer_token="secret-token")
+            client = TestClient(app)
+            headers = {"Authorization": "Bearer secret-token"}
+
+            response = client.post(
+                "/v1/synthesize-insights",
+                headers=headers,
+                json={"initiator": "codex", "dry_run": True},
+            )
+
+            self.assertEqual(response.status_code, 200)
+            payload = response.json()
+            self.assertTrue(payload.get("dry_run"))
+
+    def test_service_synthesize_insights_confirm_returns_receipt_ref(self):
+        try:
+            from fastapi.testclient import TestClient
+        except ImportError as exc:
+            self.skipTest(str(exc))
+        from automation.pipeline.service_api import create_app
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            repo_root = Path(tempdir) / "repo"
+            state_root = Path(tempdir) / "state-store"
+            app = create_app(repo_root=repo_root, state_root=state_root, bearer_token="secret-token")
+            client = TestClient(app)
+            headers = {"Authorization": "Bearer secret-token"}
+
+            dry_response = client.post(
+                "/v1/synthesize-insights",
+                headers=headers,
+                json={"initiator": "codex", "dry_run": True},
+            )
+            self.assertEqual(dry_response.status_code, 200)
+            receipt_ref = dry_response.json().get("receipt_ref")
+            self.assertIsNotNone(receipt_ref)
+
+            confirm_response = client.post(
+                "/v1/synthesize-insights",
+                headers=headers,
+                json={"initiator": "codex", "confirm_receipt": receipt_ref},
+            )
+
+            self.assertEqual(confirm_response.status_code, 200)
+            payload = confirm_response.json()
+            self.assertEqual(payload.get("confirmed_from_receipt_ref"), receipt_ref)
+
     def test_service_rejects_operation_id_reuse_with_different_payload(self):
         try:
             from fastapi.testclient import TestClient

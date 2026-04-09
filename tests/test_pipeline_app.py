@@ -1730,6 +1730,137 @@ class ForgeAppTests(unittest.TestCase):
         self.assertEqual(llm_trace_payload["calls"][1]["relay_request_id"], "relay-insight-critic")
         self.assertEqual(llm_trace_payload["calls"][2]["relay_request_id"], "relay-insight-judge")
 
+    def test_synthesize_insights_dry_run_writes_preview_without_creating_insight(self):
+        from automation.pipeline.app import ForgeApp
+
+        self._write_knowledge_fixture(
+            "knowledge/troubleshooting/gateway-dns.md",
+            "Gateway DNS repair",
+            ["network", "dns"],
+            body="The gateway DNS resolver injected fake-ip answers.",
+        )
+        self._write_knowledge_fixture(
+            "knowledge/troubleshooting/container-dns.md",
+            "Container DNS repair",
+            ["network", "dns"],
+            body="The container inherited the poisoned resolver from the gateway.",
+        )
+
+        app = ForgeApp(self.repo_root, insight_client=GenericInsightInterfaceClient())
+        receipt = app.synthesize_insights(initiator="codex", dry_run=True)
+
+        self.assertEqual(receipt.status, "success")
+        self.assertTrue(receipt.dry_run)
+        self.assertIsNone(receipt.confirmed_from_receipt_ref)
+        self.assertEqual(
+            set(receipt.evidence_refs),
+            {
+                "knowledge/troubleshooting/gateway-dns.md",
+                "knowledge/troubleshooting/container-dns.md",
+            },
+        )
+        self.assertEqual(len(receipt.evidence_manifest), 2)
+        self.assertIsNotNone(receipt.evidence_trace_ref)
+        self.assertIsNone(receipt.insight_ref)
+        self.assertIsNone(receipt.candidate_ref)
+        self.assertIsNone(receipt.critic_ref)
+        self.assertIsNone(receipt.judge_ref)
+        self.assertEqual(sorted((self.repo_root / "insights").glob("**/*.md")), [])
+
+        receipt_payload = json.loads((self.repo_root / receipt.receipt_ref).read_text(encoding="utf-8"))
+        self.assertTrue(receipt_payload["dry_run"])
+        self.assertEqual(receipt_payload["confirmed_from_receipt_ref"], None)
+        self.assertEqual(len(receipt_payload["evidence_manifest"]), 2)
+
+    def test_synthesize_insights_can_confirm_a_dry_run_receipt(self):
+        from automation.pipeline.app import ForgeApp
+
+        self._write_knowledge_fixture(
+            "knowledge/troubleshooting/gateway-dns.md",
+            "Gateway DNS repair",
+            ["network", "dns"],
+            body="The gateway DNS resolver injected fake-ip answers.",
+        )
+        self._write_knowledge_fixture(
+            "knowledge/troubleshooting/container-dns.md",
+            "Container DNS repair",
+            ["network", "dns"],
+            body="The container inherited the poisoned resolver from the gateway.",
+        )
+
+        app = ForgeApp(self.repo_root, insight_client=GenericInsightInterfaceClient())
+        preview = app.synthesize_insights(initiator="codex", dry_run=True)
+        receipt = app.synthesize_insights(initiator="codex", confirm_receipt_ref=preview.receipt_ref)
+
+        self.assertEqual(preview.status, "success")
+        self.assertTrue(preview.dry_run)
+        self.assertEqual(receipt.status, "success")
+        self.assertFalse(receipt.dry_run)
+        self.assertEqual(receipt.confirmed_from_receipt_ref, preview.receipt_ref)
+        self.assertEqual(set(receipt.evidence_refs), set(preview.evidence_refs))
+        self.assertEqual(receipt.evidence_trace_ref, preview.evidence_trace_ref)
+        self.assertIsNotNone(receipt.insight_ref)
+        self.assertEqual(len(sorted((self.repo_root / "insights").glob("**/*.md"))), 1)
+
+    def test_synthesize_insights_confirm_fails_for_non_preview_receipt(self):
+        from automation.pipeline.app import ForgeApp
+
+        self._write_knowledge_fixture(
+            "knowledge/troubleshooting/gateway-dns.md",
+            "Gateway DNS repair",
+            ["network", "dns"],
+            body="The gateway DNS resolver injected fake-ip answers.",
+        )
+        self._write_knowledge_fixture(
+            "knowledge/troubleshooting/container-dns.md",
+            "Container DNS repair",
+            ["network", "dns"],
+            body="The container inherited the poisoned resolver from the gateway.",
+        )
+
+        app = ForgeApp(self.repo_root, insight_client=GenericInsightInterfaceClient())
+        direct = app.synthesize_insights(initiator="codex")
+        receipt = app.synthesize_insights(initiator="codex", confirm_receipt_ref=direct.receipt_ref)
+
+        self.assertEqual(direct.status, "success")
+        self.assertFalse(getattr(direct, "dry_run", False))
+        self.assertEqual(receipt.status, "failed")
+        self.assertFalse(receipt.dry_run)
+        self.assertEqual(receipt.confirmed_from_receipt_ref, direct.receipt_ref)
+        self.assertIn("dry-run insight synthesis receipt", receipt.message)
+
+    def test_synthesize_insights_confirm_fails_when_evidence_drifted(self):
+        from automation.pipeline.app import ForgeApp
+
+        self._write_knowledge_fixture(
+            "knowledge/troubleshooting/gateway-dns.md",
+            "Gateway DNS repair",
+            ["network", "dns"],
+            body="The gateway DNS resolver injected fake-ip answers.",
+        )
+        self._write_knowledge_fixture(
+            "knowledge/troubleshooting/container-dns.md",
+            "Container DNS repair",
+            ["network", "dns"],
+            body="The container inherited the poisoned resolver from the gateway.",
+        )
+
+        app = ForgeApp(self.repo_root, insight_client=GenericInsightInterfaceClient())
+        preview = app.synthesize_insights(initiator="codex", dry_run=True)
+        drifted_path = self.repo_root / preview.evidence_refs[0]
+        drifted_path.write_text(
+            drifted_path.read_text(encoding="utf-8") + "\nDrifted after preview.\n",
+            encoding="utf-8",
+        )
+
+        receipt = app.synthesize_insights(initiator="codex", confirm_receipt_ref=preview.receipt_ref)
+
+        self.assertEqual(receipt.status, "failed")
+        self.assertFalse(receipt.dry_run)
+        self.assertEqual(receipt.confirmed_from_receipt_ref, preview.receipt_ref)
+        self.assertEqual(receipt.evidence_trace_ref, preview.evidence_trace_ref)
+        self.assertIn("drift", receipt.message.lower())
+
     def test_synthesize_insights_renders_pattern_ladder_mitigation_sections(self):
         from automation.pipeline.app import ForgeApp
 

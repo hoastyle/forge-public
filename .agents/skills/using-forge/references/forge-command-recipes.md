@@ -68,8 +68,17 @@ forge promote-raw raw/captures/example.md --initiator codex
 
 ## Synthesize Insights
 
+Preview template:
+
+```text
+forge synthesize-insights --dry-run
+forge synthesize-insights --confirm-receipt <receipt_ref>
+```
+
 ```bash
 forge synthesize-insights --initiator codex
+forge synthesize-insights --dry-run --initiator codex
+forge synthesize-insights --confirm-receipt state/receipts/insights/<preview>.json --initiator codex
 ```
 
 Add `--detach` to long-running mutations when the caller should return immediately.
@@ -90,6 +99,8 @@ forge explain insight state/receipts/insights/<id>.json
 
 ```bash
 forge promote-ready --initiator codex --dry-run --operation-id nightly-ready-preview-20260409
+forge synthesize-insights --dry-run --initiator codex --operation-id nightly-insight-preview-20260409
+forge synthesize-insights --confirm-receipt state/receipts/insights/<preview>.json --initiator codex --operation-id nightly-insight-confirm-20260409
 forge synthesize-insights --initiator codex --detach --operation-id nightly-insight-build-20260409
 ```
 

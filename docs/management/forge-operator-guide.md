@@ -75,10 +75,9 @@ Run insight synthesis explicitly:
 
 ```bash
 forge synthesize-insights --initiator manual
+forge synthesize-insights --initiator manual --dry-run
+forge synthesize-insights --initiator manual --confirm-receipt state/receipts/insights/<preview>.json
 ```
-
-This public guide does not advertise `forge synthesize-insights --dry-run` or
-`forge synthesize-insights --confirm-receipt`; those flows are not part of the current public CLI contract.
 
 ## Receipts And Jobs
 
@@ -114,6 +113,8 @@ If a remote mutation may be retried by automation, pin a stable operation id:
 
 ```bash
 forge promote-ready --initiator manual --dry-run --operation-id nightly-ready-preview-20260409
+forge synthesize-insights --initiator manual --dry-run --operation-id nightly-insight-preview-20260409
+forge synthesize-insights --initiator manual --confirm-receipt state/receipts/insights/<preview>.json --operation-id nightly-insight-confirm-20260409
 forge synthesize-insights --initiator manual --detach --operation-id nightly-insight-build-20260409
 ```
 

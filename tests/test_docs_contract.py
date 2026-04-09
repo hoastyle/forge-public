@@ -14,10 +14,10 @@ class PublicDocsContractTests(unittest.TestCase):
         self.assertIn("forge promote-ready --confirm-receipt <receipt_ref>", public_section)
         self.assertIn("forge knowledge get <knowledge_ref>", public_section)
         self.assertIn("forge explain insight <receipt_ref>", public_section)
+        self.assertIn("forge synthesize-insights --dry-run", public_section)
+        self.assertIn("forge synthesize-insights --confirm-receipt <receipt_ref>", public_section)
         self.assertNotIn("forge review-sensitive", public_section)
         self.assertNotIn("forge redact-raw", public_section)
-        self.assertNotIn("forge synthesize-insights --dry-run", public_section)
-        self.assertNotIn("forge synthesize-insights --confirm-receipt", public_section)
 
     def test_public_readme_advertises_cli_install(self):
         text = (Path(__file__).resolve().parents[1] / "README.md").read_text(encoding="utf-8")
@@ -71,11 +71,11 @@ class PublicDocsContractTests(unittest.TestCase):
             / "using-forge"
             / "SKILL.md"
         ).read_text(encoding="utf-8")
+        self.assertIn("forge synthesize-insights --dry-run", text)
+        self.assertIn("forge synthesize-insights --confirm-receipt <receipt_ref>", text)
         for unsupported in (
             "forge review-sensitive",
             "forge redact-raw",
-            "forge synthesize-insights --dry-run",
-            "forge synthesize-insights --confirm-receipt",
         ):
             self.assertNotIn(unsupported, text)
 
@@ -88,11 +88,11 @@ class PublicDocsContractTests(unittest.TestCase):
             / "references"
             / "forge-command-recipes.md"
         ).read_text(encoding="utf-8")
+        self.assertIn("forge synthesize-insights --dry-run", text)
+        self.assertIn("forge synthesize-insights --confirm-receipt <receipt_ref>", text)
         for unsupported in (
             "forge review-sensitive",
             "forge redact-raw",
-            "forge synthesize-insights --dry-run",
-            "forge synthesize-insights --confirm-receipt",
         ):
             self.assertNotIn(unsupported, text)
 
