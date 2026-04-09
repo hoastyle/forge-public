@@ -717,6 +717,29 @@ class ForgeAppTests(unittest.TestCase):
         knowledge_files = sorted((self.repo_root / "knowledge").glob("**/*.md"))
         self.assertEqual(len(knowledge_files), 1)
 
+    def test_promote_ready_results_include_last_receipt_ref(self):
+        from automation.pipeline.app import ForgeApp
+
+        self._write_raw_fixture(
+            "raw/captures/pending.md",
+            "Pending raw",
+            ["network", "dns"],
+            "manual note",
+            (
+                "## Context\n\nThe gateway reboot was followed by fake DNS answers.\n\n"
+                "## Root Cause\n\nThe upstream resolver injected fake-ip ranges.\n\n"
+                "## Fix Steps\n\n- Override the resolver.\n\n"
+                "## Verification\n\n- Public domains resolve to public IPs.\n"
+            ),
+        )
+
+        app = ForgeApp(self.repo_root)
+        receipt = app.promote_ready(initiator="codex")
+
+        self.assertEqual(receipt.status, "success")
+        self.assertEqual(len(receipt.results), 1)
+        self.assertEqual(receipt.results[0]["last_receipt_ref"], receipt.results[0]["receipt_ref"])
+
     def test_promote_ready_confirm_skips_raw_that_is_no_longer_ready(self):
         from automation.pipeline.app import ForgeApp
 
@@ -749,6 +772,19 @@ class ForgeAppTests(unittest.TestCase):
         self.assertEqual(receipt.results[0]["status"], "skipped")
         self.assertIn("no longer ready", receipt.results[0]["message"])
         self.assertEqual(sorted((self.repo_root / "knowledge").glob("**/*.md")), [])
+
+    def test_promote_ready_confirm_missing_receipt_returns_structured_error(self):
+        from automation.pipeline.app import ForgeApp
+
+        app = ForgeApp(self.repo_root)
+        receipt = app.promote_ready(
+            initiator="codex",
+            confirm_receipt_ref="state/receipts/ready_promote/missing.json",
+        )
+
+        self.assertEqual(receipt.status, "failed")
+        self.assertEqual(receipt.error_code, "READY_CONFIRM_NOT_FOUND")
+        self.assertIn("--dry-run", receipt.next_step)
 
     def test_promote_raw_creates_knowledge_from_existing_raw_document(self):
         from automation.pipeline.app import ForgeApp
@@ -817,6 +853,30 @@ class ForgeAppTests(unittest.TestCase):
             self.assertIsNone(receipt.excluded_reason)
         else:
             self.assertIsInstance(receipt.excluded_reason, str)
+        self.assertEqual(receipt.last_receipt_ref, receipt.receipt_ref)
+
+    def test_read_knowledge_status_returns_last_receipt_ref(self):
+        from automation.pipeline.app import ForgeApp
+
+        self._write_raw_fixture(
+            "raw/captures/knowledge-last-receipt.md",
+            "Knowledge last receipt raw",
+            ["network", "dns"],
+            "manual note",
+            (
+                "## Context\n\nThe gateway reboot was followed by fake DNS answers.\n\n"
+                "## Root Cause\n\nThe upstream resolver injected fake-ip ranges.\n\n"
+                "## Fix Steps\n\n- Override the resolver.\n"
+                "- Restart the affected service.\n\n"
+                "## Verification\n\n- Public domains resolve to public IPs.\n"
+            ),
+        )
+
+        app = ForgeApp(self.repo_root)
+        promote_receipt = app.promote_raw("raw/captures/knowledge-last-receipt.md", initiator="codex")
+        payload = app.read_knowledge_status(promote_receipt.knowledge_ref)
+
+        self.assertEqual(payload["last_receipt_ref"], promote_receipt.receipt_ref)
 
     def test_promote_raw_already_promoted_reports_current_publication_state(self):
         from automation.pipeline.app import ForgeApp
@@ -860,6 +920,31 @@ class ForgeAppTests(unittest.TestCase):
         self.assertFalse(receipt.eligible_for_insights)
         self.assertEqual(receipt.excluded_reason, "generic_tags_only")
         self.assertEqual(receipt.updated_at, "2026-04-04")
+
+    def test_promote_raw_already_promoted_returns_historical_last_receipt_ref(self):
+        from automation.pipeline.app import ForgeApp
+
+        self._write_raw_fixture(
+            "raw/captures/already-promoted-history.md",
+            "Already promoted history raw",
+            ["network", "dns"],
+            "manual note",
+            (
+                "## Context\n\nThe gateway reboot was followed by fake DNS answers.\n\n"
+                "## Root Cause\n\nThe upstream resolver injected fake-ip ranges.\n\n"
+                "## Fix Steps\n\n- Override the resolver.\n"
+                "- Restart the affected service.\n\n"
+                "## Verification\n\n- Public domains resolve to public IPs.\n"
+            ),
+        )
+
+        app = ForgeApp(self.repo_root)
+        first = app.promote_raw("raw/captures/already-promoted-history.md", initiator="codex")
+        second = app.promote_raw("raw/captures/already-promoted-history.md", initiator="codex")
+
+        self.assertEqual(first.status, "success")
+        self.assertEqual(second.status, "skipped")
+        self.assertEqual(second.last_receipt_ref, first.receipt_ref)
 
     def test_promote_raw_already_promoted_historical_knowledge_without_judge_metadata_returns_none(self):
         from automation.pipeline.app import ForgeApp

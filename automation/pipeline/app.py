@@ -19,6 +19,7 @@ from .controller import (
     validate_patch_bundle,
 )
 from .documents import load_knowledge_documents, load_raw_documents
+from .errors import ForgeOperatorError
 from .explain import build_insight_explanation
 from .fetchers import LarkCliFeishuFetcher
 from .initiators import normalize_initiator
@@ -596,6 +597,8 @@ class ForgeApp:
                     dry_run=False,
                     confirmed_from_receipt_ref=confirm_receipt_ref,
                     receipt_ref=None,
+                    error_code="INSIGHT_CONFIRM_NOT_FOUND",
+                    next_step="Run `forge synthesize-insights --dry-run` first, then pass the preview receipt to `--confirm-receipt`.",
                     message="confirm receipt not found",
                 )
             )
@@ -612,6 +615,8 @@ class ForgeApp:
                     evidence_manifest=list(preview_payload.get("evidence_manifest") or []),
                     evidence_trace_ref=evidence_trace_ref,
                     receipt_ref=None,
+                    error_code="INSIGHT_CONFIRM_INVALID_TYPE",
+                    next_step="Use an insight dry-run receipt from `state/receipts/insights/...json`.",
                     message="confirm receipt must reference a dry-run insight synthesis receipt",
                 )
             )
@@ -629,6 +634,8 @@ class ForgeApp:
                     evidence_manifest=[],
                     evidence_trace_ref=evidence_trace_ref,
                     receipt_ref=None,
+                    error_code="INSIGHT_CONFIRM_MISSING_MANIFEST",
+                    next_step="Rerun `forge synthesize-insights --dry-run` to generate a fresh preview receipt before confirming.",
                     message="confirm receipt is missing evidence manifest",
                 )
             )
@@ -646,6 +653,8 @@ class ForgeApp:
                     evidence_manifest=manifest,
                     evidence_trace_ref=evidence_trace_ref,
                     receipt_ref=None,
+                    error_code="INSIGHT_CONFIRM_EVIDENCE_DRIFT",
+                    next_step="Rerun `forge synthesize-insights --dry-run` to refresh the evidence set, then confirm again.",
                     message=failure_message,
                 )
             )
@@ -835,7 +844,12 @@ class ForgeApp:
     def read_receipt(self, selector: Union[str, Path]) -> Dict[str, Any]:
         selector_text = str(selector).strip()
         if not selector_text:
-            raise FileNotFoundError("receipt selector is empty")
+            raise ForgeOperatorError(
+                "receipt selector is empty",
+                error_code="RECEIPT_SELECTOR_EMPTY",
+                next_step="Pass a receipt id or a full `state/receipts/...json` path to `forge receipt get`.",
+                status_code=400,
+            )
 
         direct_path = self._resolve_repo_path(selector_text)
         if direct_path.exists():
@@ -862,19 +876,39 @@ class ForgeApp:
                 matches.append(path)
 
         if not matches:
-            raise FileNotFoundError("receipt not found: {0}".format(selector_text))
+            raise ForgeOperatorError(
+                "receipt not found: {0}".format(selector_text),
+                error_code="RECEIPT_NOT_FOUND",
+                next_step="Run `forge job get <job_id>` to discover `receipt_ref`, or pass a full `state/receipts/...json` path.",
+                status_code=404,
+            )
         if len(matches) > 1:
-            raise FileNotFoundError("receipt selector is ambiguous: {0}".format(selector_text))
+            raise ForgeOperatorError(
+                "receipt selector is ambiguous: {0}".format(selector_text),
+                error_code="RECEIPT_SELECTOR_AMBIGUOUS",
+                next_step="Pass the full `state/receipts/...json` path instead of a short selector.",
+                status_code=400,
+            )
         return json.loads(matches[0].read_text(encoding="utf-8"))
 
     def read_knowledge_status(self, selector: Union[str, Path]) -> Dict[str, Any]:
         knowledge_ref = str(selector).strip()
         doc = self._find_knowledge_document(knowledge_ref)
         if doc is None:
-            raise FileNotFoundError("knowledge not found: {0}".format(knowledge_ref))
+            raise ForgeOperatorError(
+                "knowledge not found: {0}".format(knowledge_ref),
+                error_code="KNOWLEDGE_NOT_FOUND",
+                next_step="Pass a full `knowledge/...md` path or inspect the available documents before retrying `forge knowledge get`.",
+                status_code=404,
+            )
         publication = self._resolve_knowledge_publication_status(knowledge_ref)
         if publication is None:
-            raise FileNotFoundError("knowledge not found: {0}".format(knowledge_ref))
+            raise ForgeOperatorError(
+                "knowledge not found: {0}".format(knowledge_ref),
+                error_code="KNOWLEDGE_NOT_FOUND",
+                next_step="Pass a full `knowledge/...md` path or inspect the available documents before retrying `forge knowledge get`.",
+                status_code=404,
+            )
         return {
             "status": "success",
             "knowledge_ref": knowledge_ref,
@@ -887,6 +921,7 @@ class ForgeApp:
             "eligible_for_insights": publication.eligible_for_insights,
             "excluded_reason": publication.excluded_reason,
             "updated_at": publication.updated_at,
+            "last_receipt_ref": publication.last_receipt_ref,
         }
 
     def explain_insight_receipt(self, receipt_ref: Union[str, Path]) -> Dict[str, Any]:
@@ -894,10 +929,20 @@ class ForgeApp:
         receipt = self.read_receipt(normalized_receipt_ref)
         evidence_trace_ref = str(receipt.get("evidence_trace_ref") or "").strip()
         if evidence_trace_ref == "":
-            raise FileNotFoundError("insight receipt missing evidence trace: {0}".format(normalized_receipt_ref))
+            raise ForgeOperatorError(
+                "insight receipt missing evidence trace: {0}".format(normalized_receipt_ref),
+                error_code="INSIGHT_RECEIPT_MISSING_TRACE",
+                next_step="Use an insight synthesis receipt that includes `evidence_trace_ref`, or rerun insight synthesis before calling `forge explain insight`.",
+                status_code=400,
+            )
         trace_path = self._resolve_state_path(evidence_trace_ref)
         if not trace_path.exists():
-            raise FileNotFoundError("evidence trace not found: {0}".format(evidence_trace_ref))
+            raise ForgeOperatorError(
+                "evidence trace not found: {0}".format(evidence_trace_ref),
+                error_code="EVIDENCE_TRACE_NOT_FOUND",
+                next_step="Rerun insight synthesis to regenerate the evidence trace, then retry `forge explain insight`.",
+                status_code=404,
+            )
         trace_payload = json.loads(trace_path.read_text(encoding="utf-8"))
         return build_insight_explanation(
             receipt_ref=normalized_receipt_ref,
@@ -919,6 +964,8 @@ class ForgeApp:
                     status="failed",
                     initiator=initiator,
                     raw_ref=relative_raw_ref,
+                    error_code="RAW_NOT_FOUND",
+                    next_step="Use `forge review-queue` or verify the exact `raw/...md` path before retrying promotion.",
                     message="raw document not found",
                 )
             )
@@ -939,6 +986,7 @@ class ForgeApp:
                     eligible_for_insights=publication.eligible_for_insights if publication else None,
                     excluded_reason=publication.excluded_reason if publication else None,
                     updated_at=publication.updated_at if publication else None,
+                    last_receipt_ref=self._find_latest_receipt_ref_for_knowledge(existing_knowledge_refs[0]),
                     message="raw document already promoted",
                 )
             )
@@ -951,6 +999,8 @@ class ForgeApp:
                     status="skipped",
                     initiator=initiator,
                     raw_ref=relative_raw_ref,
+                    error_code="RAW_BELOW_PROMOTION_THRESHOLD",
+                    next_step="Expand the raw content or merge it with related material, then retry `forge promote-raw`.",
                     message="raw content is below the knowledge promotion threshold",
                 )
             )
@@ -974,6 +1024,8 @@ class ForgeApp:
                     initiator=initiator,
                     raw_ref=relative_raw_ref,
                     llm_trace_ref=self._extract_trace_ref(exc),
+                    error_code="RAW_PROMOTION_PIPELINE_FAILED",
+                    next_step="Inspect the attached trace fields and retry the same raw path once the upstream issue is resolved.",
                     message=str(exc),
                 )
             )
@@ -1032,6 +1084,7 @@ class ForgeApp:
                             eligible_for_insights=publication.eligible_for_insights if publication else None,
                             excluded_reason=publication.excluded_reason if publication else None,
                             updated_at=publication.updated_at if publication else None,
+                            last_receipt_ref=self._find_latest_receipt_ref_for_knowledge(existing_knowledge_refs[0]),
                             message="raw document already promoted",
                         )
                     )
@@ -1170,6 +1223,8 @@ class ForgeApp:
                 failed_count=1,
                 results=[],
                 receipt_ref=None,
+                error_code="READY_CONFIRM_NOT_FOUND",
+                next_step="Run `forge promote-ready --dry-run` first, then pass the preview receipt to `--confirm-receipt`.",
                 message="confirm receipt not found",
             )
             return self._write_ready_promotion_batch_receipt(receipt)
@@ -1193,6 +1248,8 @@ class ForgeApp:
                 failed_count=1,
                 results=[],
                 receipt_ref=None,
+                error_code="READY_CONFIRM_INVALID_TYPE",
+                next_step="Use a ready-promotion dry-run receipt from `state/receipts/ready_promote/...json`.",
                 message="confirm receipt must reference a dry-run ready promotion batch",
             )
             return self._write_ready_promotion_batch_receipt(receipt)
@@ -2183,7 +2240,22 @@ class ForgeApp:
             knowledge_ref=knowledge_ref,
             document=doc,
             excluded_reason=evaluation["excluded_reason"],
+            last_receipt_ref=self._find_latest_receipt_ref_for_knowledge(knowledge_ref),
         )
+
+    def _find_latest_receipt_ref_for_knowledge(self, knowledge_ref: str) -> Optional[str]:
+        matches: List[Path] = []
+        for path in sorted(self.state_root.glob("receipts/**/*.json")):
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                continue
+            if str(payload.get("knowledge_ref") or "").strip() == knowledge_ref:
+                matches.append(path)
+        if not matches:
+            return None
+        latest = max(matches, key=lambda path: (path.stat().st_mtime_ns, str(path)))
+        return self._relative(latest)
 
     def _evaluate_knowledge_doc_for_insights(self, doc: Dict[str, object]) -> Dict[str, Any]:
         status = str(doc.get("status") or "").strip().lower()
@@ -2732,6 +2804,8 @@ class ForgeApp:
         receipt_path = self.state_root / "receipts" / "raw_promote" / "{0}.json".format(receipt.id)
         self._write_json(receipt_path, receipt.to_dict())
         receipt.receipt_ref = self._relative(receipt_path)
+        if receipt.knowledge_ref and receipt.last_receipt_ref is None:
+            receipt.last_receipt_ref = receipt.receipt_ref
         self._write_json(receipt_path, receipt.to_dict())
         return receipt
 

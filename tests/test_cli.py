@@ -342,6 +342,8 @@ class ForgeCliTests(unittest.TestCase):
             self.assertEqual(exit_code, 1)
             payload = json.loads(stdout.getvalue())
             self.assertEqual(payload["status"], "failed")
+            self.assertEqual(payload["error_code"], "RECEIPT_NOT_FOUND")
+            self.assertIn("receipt_ref", payload["next_step"])
 
     def test_cli_knowledge_get_returns_status_json(self):
         from automation.pipeline.cli import main

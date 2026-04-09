@@ -462,6 +462,8 @@ class ForgeServiceApiTests(unittest.TestCase):
             self.assertEqual(response.status_code, 404)
             payload = response.json()
             self.assertEqual(payload["status"], "failed")
+            self.assertEqual(payload["error_code"], "RECEIPT_NOT_FOUND")
+            self.assertIn("receipt_ref", payload["next_step"])
 
 
 if __name__ == "__main__":

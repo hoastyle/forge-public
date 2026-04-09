@@ -75,6 +75,8 @@ class InsightSynthesisReceipt:
     llm_trace_ref: Optional[str] = None
     relay_request_ids: Optional[List[str]] = None
     receipt_ref: Optional[str] = None
+    error_code: Optional[str] = None
+    next_step: Optional[str] = None
     message: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
@@ -190,6 +192,9 @@ class RawPromotionReceipt:
     eligible_for_insights: Optional[bool] = None
     excluded_reason: Optional[str] = None
     updated_at: Optional[str] = None
+    last_receipt_ref: Optional[str] = None
+    error_code: Optional[str] = None
+    next_step: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -230,6 +235,8 @@ class ReadyPromotionBatchReceipt:
     failed_count: int
     results: List[Dict[str, Any]] = field(default_factory=list)
     receipt_ref: Optional[str] = None
+    error_code: Optional[str] = None
+    next_step: Optional[str] = None
     message: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:

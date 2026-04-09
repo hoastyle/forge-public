@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 
 from .app import ForgeApp
 from .doctor import collect_dependency_report
+from .errors import ForgeOperatorError
 from .operations import OperationConflictError, OperationStore
 
 
@@ -323,6 +324,8 @@ def create_app(
         try:
             with runtime.mutation_lock:
                 return runtime.build_app().read_receipt(selector)
+        except ForgeOperatorError as exc:
+            return JSONResponse(exc.to_payload(), status_code=exc.status_code)
         except FileNotFoundError as exc:
             return JSONResponse({"status": "failed", "message": str(exc)}, status_code=404)
 
@@ -331,6 +334,8 @@ def create_app(
         try:
             with runtime.mutation_lock:
                 return runtime.build_app().read_knowledge_status(selector)
+        except ForgeOperatorError as exc:
+            return JSONResponse(exc.to_payload(), status_code=exc.status_code)
         except FileNotFoundError as exc:
             return JSONResponse({"status": "failed", "message": str(exc)}, status_code=404)
 
@@ -339,6 +344,8 @@ def create_app(
         try:
             with runtime.mutation_lock:
                 return runtime.build_app().explain_insight_receipt(receipt_ref)
+        except ForgeOperatorError as exc:
+            return JSONResponse(exc.to_payload(), status_code=exc.status_code)
         except FileNotFoundError as exc:
             return JSONResponse({"status": "failed", "message": str(exc)}, status_code=404)
 

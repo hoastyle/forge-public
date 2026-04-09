@@ -14,6 +14,7 @@ class KnowledgePublicationStatus:
     eligible_for_insights: bool
     excluded_reason: Optional[str]
     updated_at: Optional[str]
+    last_receipt_ref: Optional[str]
 
 
 def build_knowledge_publication_status(
@@ -21,6 +22,7 @@ def build_knowledge_publication_status(
     knowledge_ref: str,
     document: Mapping[str, object],
     excluded_reason: Optional[str],
+    last_receipt_ref: Optional[str],
 ) -> KnowledgePublicationStatus:
     publication_status = _normalize_optional_text(document.get("status"))
     judge_decision = _normalize_optional_text(document.get("judge_decision"))
@@ -35,6 +37,7 @@ def build_knowledge_publication_status(
         eligible_for_insights=excluded_reason is None,
         excluded_reason=excluded_reason,
         updated_at=updated_at,
+        last_receipt_ref=last_receipt_ref,
     )
 
 

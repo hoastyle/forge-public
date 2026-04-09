@@ -16,6 +16,7 @@ from .client_config import (
     save_remote_connection,
 )
 from .doctor import collect_dependency_report, collect_runtime_proxy_warnings
+from .errors import ForgeOperatorError
 from .initiators import ALLOWED_INITIATORS, parse_initiator
 from .remote_client import RemoteApiError, request_json
 
@@ -299,6 +300,10 @@ def main(argv=None) -> int:
     if args.command == "receipt":
         try:
             payload = app.read_receipt(args.selector)
+        except ForgeOperatorError as exc:
+            payload = _operator_error_payload(exc)
+            sys.stdout.write(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
+            return 1
         except FileNotFoundError as exc:
             payload = {"status": "failed", "message": str(exc)}
             sys.stdout.write(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
@@ -309,6 +314,10 @@ def main(argv=None) -> int:
     if args.command == "knowledge":
         try:
             payload = app.read_knowledge_status(args.selector)
+        except ForgeOperatorError as exc:
+            payload = _operator_error_payload(exc)
+            sys.stdout.write(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
+            return 1
         except FileNotFoundError as exc:
             payload = {"status": "failed", "message": str(exc)}
             sys.stdout.write(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
@@ -319,6 +328,10 @@ def main(argv=None) -> int:
     if args.command == "explain":
         try:
             payload = app.explain_insight_receipt(args.receipt_ref)
+        except ForgeOperatorError as exc:
+            payload = _operator_error_payload(exc)
+            sys.stdout.write(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
+            return 1
         except FileNotFoundError as exc:
             payload = {"status": "failed", "message": str(exc)}
             sys.stdout.write(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
@@ -543,6 +556,10 @@ def _resolve_remote_detach(args) -> bool:
     if getattr(args, "detach", False):
         return True
     return True
+
+
+def _operator_error_payload(exc: ForgeOperatorError) -> Dict[str, Any]:
+    return exc.to_payload()
 
 
 def _build_local_app(repo_root: Path, state_root: Optional[Path]) -> ForgeApp:
