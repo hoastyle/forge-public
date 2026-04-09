@@ -24,6 +24,7 @@ forge doctor
 ```
 
 Use `FORGE_SERVER` and `FORGE_TOKEN` when a non-interactive tool should not write local config.
+Inspect `content_health` in the doctor payload when you need a zero-side-effect snapshot of publication counts, knowledge kinds, and insight exclusion reasons.
 
 ## Inject Text
 

@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
+from .documents import load_knowledge_documents
 from .repo_env import describe_repo_env, resolve_provider_runtime_config, resolve_repo_setting
 
 PROXY_ENV_VAR_NAMES = ("ALL_PROXY", "all_proxy", "HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy")
@@ -51,6 +52,7 @@ def collect_dependency_report(repo_root: Path | None = None, app_root: Path | No
             "repo_root": str(resolved_repo_root),
             "app_root": str(resolved_app_root),
         },
+        "content_health": _collect_content_health_report(resolved_repo_root),
         "default_knowledge_client": default_client,
         "default_insight_client": default_insight_client,
         "dependencies": {
@@ -304,6 +306,124 @@ def _collect_litellm_provider_report(
         "providers": providers_list,
         "ready": ready,
         "note": "Provider config is inferred from model prefixes and resolved from process env first, then repo-local .env.",
+    }
+
+
+def _collect_content_health_report(repo_root: Path) -> Dict[str, Any]:
+    docs = load_knowledge_documents(repo_root)
+    publication_status_counts: Dict[str, int] = {}
+    knowledge_kind_counts: Dict[str, int] = {}
+    excluded_reason_counts: Dict[str, int] = {}
+    namespace_counts: Dict[str, int] = {}
+    eligible_for_insights_count = 0
+
+    for doc in docs:
+        status = str(doc.get("status") or "unknown").strip().lower() or "unknown"
+        publication_status_counts[status] = publication_status_counts.get(status, 0) + 1
+
+        path = str(doc.get("path") or "")
+        path_parts = Path(path).parts
+        namespace = path_parts[1] if len(path_parts) > 1 else "unknown"
+        namespace_counts[namespace] = namespace_counts.get(namespace, 0) + 1
+
+        knowledge_kind = _resolve_knowledge_kind(doc)
+        knowledge_kind_counts[knowledge_kind] = knowledge_kind_counts.get(knowledge_kind, 0) + 1
+
+        excluded_reason = _evaluate_knowledge_doc_for_insights(doc)
+        if excluded_reason is None:
+            eligible_for_insights_count += 1
+        else:
+            excluded_reason_counts[excluded_reason] = excluded_reason_counts.get(excluded_reason, 0) + 1
+
+    return {
+        "knowledge_total": len(docs),
+        "publication_status_counts": publication_status_counts,
+        "knowledge_kind_counts": knowledge_kind_counts,
+        "eligible_for_insights_count": eligible_for_insights_count,
+        "ineligible_for_insights_count": max(0, len(docs) - eligible_for_insights_count),
+        "excluded_reason_counts": excluded_reason_counts,
+        "namespace_counts": namespace_counts,
+    }
+
+
+def _normalize_knowledge_kind(value: object) -> str:
+    normalized = str(value or "").strip().lower()
+    if normalized in {"reference", "workflow", "incident", "heuristic", "pattern", "correction"}:
+        return normalized
+    return ""
+
+
+def _resolve_knowledge_kind(doc: Dict[str, Any]) -> str:
+    explicit = _normalize_knowledge_kind(doc.get("knowledge_kind"))
+    if explicit:
+        return explicit
+
+    normalized_tags = {str(tag).strip().lower() for tag in (doc.get("tags") or []) if str(tag).strip()}
+    knowledge_path = str(doc.get("path") or "").strip().lower()
+
+    if knowledge_path.startswith("knowledge/reference/") or "reference" in normalized_tags:
+        return "reference"
+    if "incident" in normalized_tags:
+        return "incident"
+    if "heuristic" in normalized_tags:
+        return "heuristic"
+    if "pattern" in normalized_tags:
+        return "pattern"
+    if knowledge_path.startswith("knowledge/workflow/") or "workflow" in normalized_tags:
+        return "workflow"
+    if knowledge_path.startswith("knowledge/tools/"):
+        return "reference"
+    return "heuristic"
+
+
+def _evaluate_knowledge_doc_for_insights(doc: Dict[str, Any]) -> str | None:
+    status = str(doc.get("status") or "").strip().lower()
+    if status != "active":
+        return "status_not_active"
+    if doc.get("superseded_by"):
+        return "superseded"
+    if _is_correction_like_knowledge(doc):
+        return "correction_like"
+    if _resolve_knowledge_kind(doc) == "reference":
+        return "knowledge_kind_reference"
+
+    eligible_tags = []
+    for tag in doc.get("tags") or []:
+        normalized_tag = str(tag).strip().lower()
+        if _is_generic_insight_tag(normalized_tag):
+            continue
+        eligible_tags.append(normalized_tag)
+    if not eligible_tags:
+        return "generic_tags_only"
+    return None
+
+
+def _is_correction_like_knowledge(doc: Dict[str, Any]) -> bool:
+    if _resolve_knowledge_kind(doc) == "correction":
+        return True
+    tags = {str(tag).strip().lower() for tag in (doc.get("tags") or [])}
+    correction_tags = {"corrected", "correction", "superseded", "obsolete", "retracted"}
+    if tags.intersection(correction_tags):
+        return True
+    title = str(doc.get("title") or "").strip().lower()
+    body = str(doc.get("body") or "").strip().lower()
+    correction_markers = ("corrected", "correction", "superseded", "obsolete", "retracted")
+    return any(marker in title or marker in body for marker in correction_markers)
+
+
+def _is_generic_insight_tag(tag: str) -> bool:
+    return tag in {
+        "automation",
+        "general",
+        "misc",
+        "note",
+        "notes",
+        "pattern",
+        "patterns",
+        "tool",
+        "tools",
+        "troubleshooting",
+        "workflow",
     }
 
 

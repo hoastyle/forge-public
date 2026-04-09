@@ -47,6 +47,8 @@ forge doctor
 `forge login` stores the endpoint in local client config. `FORGE_SERVER` and `FORGE_TOKEN` can override it.
 If a recipe or skill example disagrees with `forge doctor`, `forge help`, or the command contract doc, treat the
 contract doc and actual CLI behavior as the source of truth.
+`forge doctor` is also the zero-side-effect health snapshot: inspect `content_health` to see publication-state counts,
+knowledge-kind mix, insight-eligibility totals, and the main exclusion reasons before changing runtime thresholds or prompts.
 
 ## Core Workflow
 

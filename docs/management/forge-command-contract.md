@@ -28,6 +28,7 @@ operator-facing workflows:
 ## Contract Rules
 
 - `initiator` is provenance metadata, not routing logic.
+- `doctor` is side-effect free and now includes a `content_health` summary for knowledge publication state, knowledge kinds, insight eligibility, and exclusion reasons.
 - `inject` writes raw material; `--promote-knowledge` is the only inline trigger from raw capture into knowledge.
 - `promote-raw` and `promote-ready` are the only public raw-to-knowledge promotion commands; their result items expose `knowledge_kind`, publication metadata, and `last_receipt_ref` so callers can interpret the latest knowledge status immediately.
 - `synthesize-insights` is an explicit knowledge-to-insights mutation.

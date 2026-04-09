@@ -16,6 +16,7 @@ to the Forge repository or its documents. The authoritative command list lives i
 
 - Public entrypoint: `forge ...`
 - Configure the target service with `forge login --server <url> --token <token>`, or with `FORGE_SERVER` and `FORGE_TOKEN`.
+- Run `forge doctor` before bigger workflow changes; its `content_health` block is the side-effect-free snapshot for publication-state mix, knowledge kinds, insight eligibility, and common exclusion reasons.
 - Use `forge receipt get <selector>` and `forge job get <job_id>` before claiming what happened.
 - Use `forge knowledge get <knowledge_ref>` to inspect publication state; the response includes `knowledge_kind`, the publication state, and `last_receipt_ref` so you can trace the latest durable receipt before issuing another mutation.
 - Use `forge explain insight <receipt_ref>` to inspect evidence selection and exclusions for one insight receipt, including `knowledge_kind` and `excluded_reason` for excluded documents.

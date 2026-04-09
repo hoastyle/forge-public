@@ -1577,6 +1577,10 @@ class ForgeAppTests(unittest.TestCase):
         self.assertIn("status: active", knowledge_text)
         self.assertIn("The upstream resolver injected fake-ip ranges.", knowledge_text)
         self.assertIn("Judge score: `0.95`", knowledge_text)
+        self.assertIn("## Evidence Strength", knowledge_text)
+        self.assertIn("### Observation", knowledge_text)
+        self.assertIn("### Verified Results", knowledge_text)
+        self.assertIn("### Confidence Basis", knowledge_text)
 
     def test_knowledge_pipeline_accepts_generic_client_interface(self):
         from automation.pipeline.app import ForgeApp

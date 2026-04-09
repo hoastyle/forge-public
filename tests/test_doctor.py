@@ -46,6 +46,7 @@ class ForgeDoctorTests(unittest.TestCase):
         self.assertIn("default_knowledge_client", report)
         self.assertIn("dependencies", report)
         self.assertIn("third_party_dependencies", report)
+        self.assertIn("content_health", report)
         self.assertIn("lark_cli", report["dependencies"])
         self.assertIn("litellm", report["dependencies"])
 
@@ -82,6 +83,73 @@ class ForgeDoctorTests(unittest.TestCase):
         self.assertIn("importable", third_party["optional_python_packages"][0])
         self.assertEqual(third_party["optional_python_packages"][1]["name"], "socksio")
         self.assertEqual(third_party["external_clis"][0]["name"], "lark-cli")
+
+    def test_collect_dependency_report_summarizes_content_health(self):
+        from automation.pipeline.doctor import collect_dependency_report
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            repo_root = Path(tempdir)
+            troubleshooting = repo_root / "knowledge" / "troubleshooting"
+            tools = repo_root / "knowledge" / "tools"
+            workflow = repo_root / "knowledge" / "workflow"
+            troubleshooting.mkdir(parents=True, exist_ok=True)
+            tools.mkdir(parents=True, exist_ok=True)
+            workflow.mkdir(parents=True, exist_ok=True)
+            (troubleshooting / "dns.md").write_text(
+                (
+                    "---\n"
+                    "title: DNS incident\n"
+                    "created: 2026-04-04\n"
+                    "updated: 2026-04-05\n"
+                    "tags: [network, dns]\n"
+                    "status: active\n"
+                    "derived_from: [raw/captures/dns.md]\n"
+                    "---\n\n"
+                    "# DNS incident\n\nReusable troubleshooting knowledge.\n"
+                ),
+                encoding="utf-8",
+            )
+            (tools / "reference.md").write_text(
+                (
+                    "---\n"
+                    "title: DNS reference\n"
+                    "created: 2026-04-04\n"
+                    "updated: 2026-04-05\n"
+                    "tags: [network, dns, reference]\n"
+                    "status: active\n"
+                    "knowledge_kind: reference\n"
+                    "derived_from: [raw/captures/reference.md]\n"
+                    "---\n\n"
+                    "# DNS reference\n\nReference material.\n"
+                ),
+                encoding="utf-8",
+            )
+            (workflow / "draft.md").write_text(
+                (
+                    "---\n"
+                    "title: Workflow note\n"
+                    "created: 2026-04-04\n"
+                    "updated: 2026-04-05\n"
+                    "tags: [workflow]\n"
+                    "status: draft\n"
+                    "derived_from: [raw/captures/workflow.md]\n"
+                    "---\n\n"
+                    "# Workflow note\n\nWorkflow draft.\n"
+                ),
+                encoding="utf-8",
+            )
+
+            report = collect_dependency_report(repo_root)
+
+        content_health = report["content_health"]
+        self.assertEqual(content_health["knowledge_total"], 3)
+        self.assertEqual(content_health["publication_status_counts"]["active"], 2)
+        self.assertEqual(content_health["publication_status_counts"]["draft"], 1)
+        self.assertEqual(content_health["knowledge_kind_counts"]["heuristic"], 1)
+        self.assertEqual(content_health["knowledge_kind_counts"]["reference"], 1)
+        self.assertEqual(content_health["knowledge_kind_counts"]["workflow"], 1)
+        self.assertEqual(content_health["eligible_for_insights_count"], 1)
+        self.assertEqual(content_health["excluded_reason_counts"]["knowledge_kind_reference"], 1)
 
     def test_provider_report_reads_openai_credentials_and_base_url_from_repo_env(self):
         from automation.pipeline.doctor import _collect_litellm_provider_report, _load_runtime_lock

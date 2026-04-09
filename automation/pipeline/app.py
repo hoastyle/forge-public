@@ -2109,15 +2109,54 @@ class ForgeApp:
             "",
             candidate["context"] or "Imported from runtime snapshot.",
             "",
-            "## Content",
+            "## Evidence Strength",
             "",
-            "### Root Cause",
+            "### Observation",
             "",
-            candidate["root_cause"] or "Root cause information is incomplete.",
+            candidate["observation"] or "Observation is incomplete.",
             "",
-            "### Fix Steps",
+            "### Evidence",
             "",
         ]
+        lines.extend(self._render_markdown_list(candidate["evidence"], "Evidence is incomplete."))
+        lines.extend(
+            [
+                "",
+                "### Verified Results",
+                "",
+            ]
+        )
+        lines.extend(
+            self._render_markdown_list(
+                candidate["verified_results"],
+                "Verified results are incomplete.",
+            )
+        )
+        lines.extend(
+            [
+                "",
+                "### Scope Limits",
+                "",
+            ]
+        )
+        lines.extend(self._render_markdown_list(candidate["scope_limits"], "Scope limits are incomplete."))
+        lines.extend(
+            [
+                "",
+                "### Confidence Basis",
+                "",
+                candidate["confidence_basis"] or "Confidence basis is incomplete.",
+                "",
+                "## Content",
+                "",
+                "### Root Cause",
+                "",
+                candidate["root_cause"] or "Root cause information is incomplete.",
+                "",
+                "### Fix Steps",
+                "",
+            ]
+        )
         lines.extend(self._render_markdown_list(candidate["fix_steps"], "Fix steps are incomplete."))
         lines.extend(
             [

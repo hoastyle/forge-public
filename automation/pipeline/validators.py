@@ -20,12 +20,31 @@ def normalize_text_list(value: Any) -> List[str]:
 
 def normalize_candidate(payload: Dict[str, Any], fallback_title: str, fallback_tags: Iterable[str]) -> Dict[str, Any]:
     fallback_tags = list(fallback_tags)
+    context = str(payload.get("context") or "").strip()
+    root_cause = str(payload.get("root_cause") or "").strip()
+    verification = normalize_text_list(payload.get("verification"))
+    observation = str(payload.get("observation") or context or root_cause).strip()
+    evidence = normalize_text_list(payload.get("evidence")) or _derive_candidate_evidence(context, root_cause)
+    verified_results = normalize_text_list(payload.get("verified_results")) or list(verification)
+    scope_limits = normalize_text_list(payload.get("scope_limits")) or [
+        "Applies only to the systems, inputs, and environment described in the source material."
+    ]
+    confidence_basis = str(payload.get("confidence_basis") or "").strip() or _derive_confidence_basis(
+        evidence=evidence,
+        verified_results=verified_results,
+        root_cause=root_cause,
+    )
     candidate = {
         "title": str(payload.get("title") or fallback_title).strip(),
-        "context": str(payload.get("context") or "").strip(),
-        "root_cause": str(payload.get("root_cause") or "").strip(),
+        "context": context,
+        "observation": observation,
+        "root_cause": root_cause,
+        "evidence": evidence,
         "fix_steps": normalize_text_list(payload.get("fix_steps")),
         "verification": normalize_text_list(payload.get("verification")),
+        "verified_results": verified_results,
+        "scope_limits": scope_limits,
+        "confidence_basis": confidence_basis,
         "related": normalize_text_list(payload.get("related")),
         "tags": normalize_text_list(payload.get("tags")) or fallback_tags,
         "confidence": _normalize_confidence(payload.get("confidence")),
@@ -67,12 +86,22 @@ def normalize_judge(payload: Dict[str, Any], min_score: float) -> Dict[str, Any]
 
 def deterministic_candidate_issues(candidate: Dict[str, Any]) -> List[str]:
     issues = []
+    if not candidate.get("observation"):
+        issues.append("Observation is incomplete.")
     if not candidate["root_cause"]:
         issues.append("Root cause information is incomplete.")
+    if not candidate.get("evidence"):
+        issues.append("Evidence is incomplete.")
     if not candidate["fix_steps"]:
         issues.append("Fix steps are incomplete.")
     if not candidate["verification"]:
         issues.append("Verification information is incomplete.")
+    if not candidate.get("verified_results"):
+        issues.append("Verified results are incomplete.")
+    if not candidate.get("scope_limits"):
+        issues.append("Scope limits are incomplete.")
+    if not candidate.get("confidence_basis"):
+        issues.append("Confidence basis is incomplete.")
     return issues
 
 
@@ -139,3 +168,36 @@ def _normalize_confidence(value: Any) -> float:
         return round(float(value), 2)
     except (TypeError, ValueError):
         return 0.0
+
+
+def _derive_candidate_evidence(context: str, root_cause: str) -> List[str]:
+    evidence = []
+    for item in (context, root_cause):
+        text = str(item or "").strip()
+        if text and text not in evidence:
+            evidence.append(text)
+    return evidence
+
+
+def _derive_confidence_basis(
+    *,
+    evidence: List[str],
+    verified_results: List[str],
+    root_cause: str,
+) -> str:
+    parts = []
+    if evidence:
+        parts.append("captured evidence")
+    if verified_results:
+        parts.append("recorded verification results")
+    if str(root_cause or "").strip():
+        parts.append("a stated root cause")
+    if not parts:
+        return ""
+    if len(parts) == 1:
+        joined = parts[0]
+    elif len(parts) == 2:
+        joined = "{0} and {1}".format(parts[0], parts[1])
+    else:
+        joined = "{0}, {1}, and {2}".format(parts[0], parts[1], parts[2])
+    return "Confidence is based on {0}.".format(joined)

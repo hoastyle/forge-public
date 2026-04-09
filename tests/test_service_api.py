@@ -37,6 +37,7 @@ class ForgeServiceApiTests(unittest.TestCase):
             self.assertEqual(payload["state_storage"], "external")
             self.assertEqual(payload["paths"]["app_root"], str(app_root))
             self.assertEqual(payload["paths"]["repo_root"], str(repo_root))
+            self.assertIn("content_health", payload)
 
     def test_service_requires_bearer_token_when_configured(self):
         try:
