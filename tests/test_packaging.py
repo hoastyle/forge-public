@@ -2,6 +2,7 @@ import json
 import os
 import shutil
 import subprocess
+import tarfile
 import tempfile
 import unittest
 from pathlib import Path
@@ -30,6 +31,50 @@ SANITIZED_RUNTIME_ENV = {
 
 
 class PackagingTests(unittest.TestCase):
+    @staticmethod
+    def _host_archive_name(version: str) -> str:
+        os_name = subprocess.run(
+            ["uname", "-s"],
+            check=False,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        arch_name = subprocess.run(
+            ["uname", "-m"],
+            check=False,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+        os_lookup = {"Linux": "linux", "Darwin": "darwin"}
+        arch_lookup = {"x86_64": "amd64", "amd64": "amd64", "arm64": "arm64", "aarch64": "arm64"}
+        normalized_os = os_lookup[os_name]
+        normalized_arch = arch_lookup[arch_name]
+        return "forge_{0}_{1}_{2}.tar.gz".format(version, normalized_os, normalized_arch)
+
+    def _write_fake_public_release(self, release_root: Path, version: str) -> None:
+        release_dir = release_root / "releases" / "download" / "v{0}".format(version)
+        release_dir.mkdir(parents=True, exist_ok=True)
+
+        cli_archive = release_dir / self._host_archive_name(version)
+        skill_archive = release_dir / "forge_skill_using-forge_{0}.tar.gz".format(version)
+
+        cli_stage = release_root / "forge"
+        cli_stage.write_text("#!/usr/bin/env bash\necho forge-fake\n", encoding="utf-8")
+        cli_stage.chmod(0o755)
+        with tarfile.open(cli_archive, "w:gz") as handle:
+            handle.add(cli_stage, arcname="forge")
+
+        skill_stage = release_root / "using-forge"
+        (skill_stage / "references").mkdir(parents=True, exist_ok=True)
+        (skill_stage / "SKILL.md").write_text("# fake skill\n", encoding="utf-8")
+        (skill_stage / "references" / "forge-command-recipes.md").write_text(
+            "# fake reference\n",
+            encoding="utf-8",
+        )
+        with tarfile.open(skill_archive, "w:gz") as handle:
+            handle.add(skill_stage, arcname="using-forge")
+
     def test_public_repo_excludes_private_internal_artifacts(self):
         repo_root = REPO_ROOT
 
@@ -193,6 +238,107 @@ class PackagingTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, msg=result.stderr)
             bundles = list(Path(tempdir).glob("forge_skill_using-forge_0.1.0.tar.gz"))
             self.assertEqual(len(bundles), 1)
+
+    def test_install_script_mentions_skill_options(self):
+        text = (REPO_ROOT / "scripts" / "release" / "install-public-cli.sh").read_text(encoding="utf-8")
+        self.assertIn("--no-skill", text)
+        self.assertIn("--skill-only", text)
+        self.assertIn("--skill-home", text)
+        self.assertIn("--include-repo-skill-dir", text)
+
+    def test_install_script_installs_skill_into_discovered_user_dirs(self):
+        if shutil.which("bash") is None:
+            self.skipTest("bash is required for installer validation")
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            self._write_fake_public_release(root, "0.1.0")
+
+            home_dir = root / "home"
+            codex_home = root / "codex"
+            install_dir = root / "bin"
+            skill_home = root / "share" / "forge" / "skills"
+            (home_dir / ".claude" / "skills").mkdir(parents=True, exist_ok=True)
+            (codex_home / "skills").mkdir(parents=True, exist_ok=True)
+
+            env = os.environ.copy()
+            env.update(
+                {
+                    "HOME": str(home_dir),
+                    "CODEX_HOME": str(codex_home),
+                }
+            )
+            result = subprocess.run(
+                [
+                    "bash",
+                    "scripts/release/install-public-cli.sh",
+                    "--version",
+                    "v0.1.0",
+                    "--base-url",
+                    "file://{0}/releases/download".format(root),
+                    "--install-dir",
+                    str(install_dir),
+                    "--skill-home",
+                    str(skill_home),
+                ],
+                cwd=REPO_ROOT,
+                check=False,
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+
+            self.assertEqual(result.returncode, 0, msg=result.stderr)
+            self.assertTrue((install_dir / "forge").exists())
+            self.assertTrue((skill_home / "using-forge" / "SKILL.md").exists())
+            self.assertTrue((codex_home / "skills" / "using-forge").exists())
+            self.assertTrue((home_dir / ".claude" / "skills" / "using-forge").exists())
+
+    def test_install_script_skips_repo_skill_dir_by_default(self):
+        if shutil.which("bash") is None:
+            self.skipTest("bash is required for installer validation")
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            self._write_fake_public_release(root, "0.1.0")
+
+            home_dir = root / "home"
+            codex_home = root / "codex"
+            install_dir = root / "bin"
+            skill_home = root / "share" / "forge" / "skills"
+            repo_skill_dir = root / "repo" / ".agents" / "skills"
+            repo_skill_dir.mkdir(parents=True, exist_ok=True)
+            (codex_home / "skills").mkdir(parents=True, exist_ok=True)
+
+            env = os.environ.copy()
+            env.update(
+                {
+                    "HOME": str(home_dir),
+                    "CODEX_HOME": str(codex_home),
+                }
+            )
+            result = subprocess.run(
+                [
+                    "bash",
+                    "scripts/release/install-public-cli.sh",
+                    "--version",
+                    "v0.1.0",
+                    "--base-url",
+                    "file://{0}/releases/download".format(root),
+                    "--install-dir",
+                    str(install_dir),
+                    "--skill-home",
+                    str(skill_home),
+                ],
+                cwd=REPO_ROOT,
+                check=False,
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+
+            self.assertEqual(result.returncode, 0, msg=result.stderr)
+            self.assertFalse((repo_skill_dir / "using-forge").exists())
 
     def test_homebrew_formula_renderer_preserves_archive_url_query(self):
         if shutil.which("bash") is None:
