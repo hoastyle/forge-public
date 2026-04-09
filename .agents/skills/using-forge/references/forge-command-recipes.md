@@ -90,6 +90,8 @@ Remote mutations default to detached jobs. Poll `forge job get <job_id>` and the
 forge knowledge get knowledge/troubleshooting/example.md
 ```
 
+Use the returned `last_receipt_ref` to jump straight to the latest durable receipt for that knowledge document.
+
 ## Explain Insight Evidence
 
 ```bash
@@ -113,6 +115,8 @@ forge job get inject-<jobid>
 ```
 
 Remote mutations present a job handle even without `--detach`; poll `job get` and then `receipt get`. Add `--wait` for synchronous expectations and keep `--detach` only if you must surface explicit asynchronous behavior.
+
+If a command fails, use `error_code` for automation and `next_step` for the immediate operator action.
 
 ## Maintainer Recipes
 

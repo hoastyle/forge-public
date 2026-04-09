@@ -73,6 +73,9 @@ forge promote-ready --initiator manual --dry-run --limit 5
 forge promote-ready --initiator manual --confirm-receipt state/receipts/ready_promote/<preview>.json
 ```
 
+The preview receipt and the confirmed promotion both expose the publication metadata and `last_receipt_ref` for each promoted document so you can track which receipt sealed the latest published state.
+Single-item `promote-raw` replies expose the same publication metadata and `last_receipt_ref`, so the command already reports the latest durable state for that document without a separate reconciliation step.
+
 Run insight synthesis explicitly:
 
 ```bash
@@ -98,11 +101,15 @@ forge job get inject-<jobid>
 
 `job_id` is only an execution handle. `receipt_ref` is the durable result pointer. Add `--wait` when a command must complete synchronously, and continue to use `--detach` only when caller semantics explicitly require it to surface.
 
+If an operator-facing command fails, expect `message`, `error_code`, and `next_step` in the failure payload. Use `error_code` for stable scripting and `next_step` for the immediate recovery action.
+
 Inspect one knowledge document's publication state:
 
 ```bash
 forge knowledge get knowledge/troubleshooting/example.md
 ```
+
+`forge knowledge get` now returns publication metadata plus `last_receipt_ref`, so you can jump directly to the latest durable receipt without manually scanning receipt history.
 
 Inspect why one insight synthesis selected or excluded evidence:
 

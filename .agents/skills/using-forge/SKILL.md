@@ -17,7 +17,7 @@ to the Forge repository or its documents. The authoritative command list lives i
 - Public entrypoint: `forge ...`
 - Configure the target service with `forge login --server <url> --token <token>`, or with `FORGE_SERVER` and `FORGE_TOKEN`.
 - Use `forge receipt get <selector>` and `forge job get <job_id>` before claiming what happened.
-- Use `forge knowledge get <knowledge_ref>` to inspect publication state.
+- Use `forge knowledge get <knowledge_ref>` to inspect publication state; the response includes the publication state plus `last_receipt_ref` so you can trace the latest durable receipt before issuing another mutation.
 - Use `forge explain insight <receipt_ref>` to inspect evidence selection and exclusions for one insight receipt.
 - `initiator` is provenance only. Allowed values are `manual`, `codex`, `claude-code`, `openclaw`, and `ci`.
 - trigger semantics remain explicit:
@@ -71,10 +71,12 @@ to the Forge repository or its documents. The authoritative command list lives i
 
 - Treat the receipt JSON as the source of truth.
 - `receipt_ref` remains the canonical pointer to a completed operation.
+- Operator-facing failures include `message`, `error_code`, and `next_step`; use `error_code` for automation and `next_step` for operator recovery.
 - Detached mutations return a `job_id`; they do not imply success until `forge job get` reports `status=success`.
 - For `promote-ready`, use the batch receipt as the execution contract:
   - dry-run receipts expose the previewed batch
   - confirmed execution receipts link back through `confirmed_from_receipt_ref`
+  - result items expose publication metadata plus `last_receipt_ref`
 - For `synthesize-insights`, use the insight receipt as the execution contract:
   - dry-run receipts expose `evidence_refs`, `evidence_manifest`, and `evidence_trace_ref`
   - confirmed execution receipts link back through `confirmed_from_receipt_ref`

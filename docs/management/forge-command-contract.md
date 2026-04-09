@@ -29,11 +29,12 @@ operator-facing workflows:
 
 - `initiator` is provenance metadata, not routing logic.
 - `inject` writes raw material; `--promote-knowledge` is the only inline trigger from raw capture into knowledge.
-- `promote-raw` and `promote-ready` are the only public raw-to-knowledge promotion commands.
+- `promote-raw` and `promote-ready` are the only public raw-to-knowledge promotion commands; their result items expose publication metadata plus `last_receipt_ref` so callers can interpret the latest knowledge status immediately.
 - `synthesize-insights` is an explicit knowledge-to-insights mutation.
-- `knowledge get` is the read-only publication status surface for one knowledge document.
+- `knowledge get` is the read-only publication status surface for one knowledge document; responses now include the publication state plus `last_receipt_ref` so callers can trace the latest durable document state.
 - `explain insight` is the read-only evidence trace surface for one insight receipt.
 - Receipts are the durable source of truth for completed mutations.
+- Operator-facing failures expose `message`, `error_code`, and `next_step`; automation should key off `error_code`, while human operators should use `next_step` as the immediate recovery hint.
 - Remote mutations (`inject`, `promote-raw`, `promote-ready`, and `synthesize-insights`) default to detached jobs; the common completion loop is `forge job get <job_id>` followed by `forge receipt get <receipt_ref>`. Use `--wait` to perform the synchronous path that waits for the job to finish and returns the receipt inline, and treat `--detach` as a backward-compatible but usually redundant flag.
 
 ## Safe Retry
