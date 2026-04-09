@@ -786,6 +786,41 @@ class ForgeAppTests(unittest.TestCase):
         self.assertEqual(receipt.error_code, "READY_CONFIRM_NOT_FOUND")
         self.assertIn("--dry-run", receipt.next_step)
 
+    def test_promote_ready_confirm_supports_separate_state_root(self):
+        from automation.pipeline.app import ForgeApp
+
+        repo_root = self.repo_root / "repo"
+        state_root = self.repo_root / "state-store"
+        repo_root.mkdir(parents=True, exist_ok=True)
+        raw_path = repo_root / "raw" / "captures" / "pending.md"
+        raw_path.parent.mkdir(parents=True, exist_ok=True)
+        raw_path.write_text(
+            (
+                "---\n"
+                "title: Pending raw\n"
+                "created: 2026-04-04\n"
+                "updated: 2026-04-05\n"
+                "tags: [network, dns]\n"
+                "status: active\n"
+                "source: manual note\n"
+                "---\n\n"
+                "# Pending raw\n\n"
+                "## Context\n\nThe gateway reboot was followed by fake DNS answers.\n\n"
+                "## Root Cause\n\nThe upstream resolver injected fake-ip ranges.\n\n"
+                "## Fix Steps\n\n- Override the resolver.\n\n"
+                "## Verification\n\n- Public domains resolve to public IPs.\n"
+            ),
+            encoding="utf-8",
+        )
+
+        app = ForgeApp(repo_root, state_root=state_root)
+        preview = app.promote_ready(initiator="codex", dry_run=True)
+        receipt = app.promote_ready(initiator="codex", confirm_receipt_ref=preview.receipt_ref)
+
+        self.assertEqual(preview.status, "success")
+        self.assertEqual(receipt.status, "success")
+        self.assertEqual(receipt.confirmed_from_receipt_ref, preview.receipt_ref)
+
     def test_promote_raw_creates_knowledge_from_existing_raw_document(self):
         from automation.pipeline.app import ForgeApp
 
@@ -1913,6 +1948,29 @@ class ForgeAppTests(unittest.TestCase):
         self.assertFalse(receipt.dry_run)
         self.assertEqual(receipt.confirmed_from_receipt_ref, direct.receipt_ref)
         self.assertIn("dry-run insight synthesis receipt", receipt.message)
+
+    def test_synthesize_insights_confirm_preserves_selector_error_for_empty_receipt_ref(self):
+        from automation.pipeline.app import ForgeApp
+
+        self._write_knowledge_fixture(
+            "knowledge/troubleshooting/gateway-dns.md",
+            "Gateway DNS repair",
+            ["network", "dns"],
+            body="The gateway DNS resolver injected fake-ip answers.",
+        )
+        self._write_knowledge_fixture(
+            "knowledge/troubleshooting/container-dns.md",
+            "Container DNS repair",
+            ["network", "dns"],
+            body="The container inherited the poisoned resolver from the gateway.",
+        )
+
+        app = ForgeApp(self.repo_root, insight_client=GenericInsightInterfaceClient())
+        receipt = app.synthesize_insights(initiator="codex", confirm_receipt_ref="   ")
+
+        self.assertEqual(receipt.status, "failed")
+        self.assertEqual(receipt.error_code, "RECEIPT_SELECTOR_EMPTY")
+        self.assertIn("forge receipt get", receipt.next_step)
 
     def test_synthesize_insights_confirm_fails_when_evidence_drifted(self):
         from automation.pipeline.app import ForgeApp

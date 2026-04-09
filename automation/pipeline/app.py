@@ -588,6 +588,27 @@ class ForgeApp:
     ) -> InsightSynthesisReceipt:
         try:
             preview_payload = self.read_receipt(confirm_receipt_ref)
+        except ForgeOperatorError as exc:
+            error_code = exc.error_code
+            next_step = exc.next_step
+            message = str(exc)
+            if exc.error_code == "RECEIPT_NOT_FOUND":
+                error_code = "INSIGHT_CONFIRM_NOT_FOUND"
+                next_step = "Run `forge synthesize-insights --dry-run` first, then pass the preview receipt to `--confirm-receipt`."
+                message = "confirm receipt not found"
+            return self._write_insight_receipt(
+                InsightSynthesisReceipt(
+                    id=synthesis_id,
+                    status="failed",
+                    initiator=initiator,
+                    dry_run=False,
+                    confirmed_from_receipt_ref=confirm_receipt_ref,
+                    receipt_ref=None,
+                    error_code=error_code,
+                    next_step=next_step,
+                    message=message,
+                )
+            )
         except FileNotFoundError:
             return self._write_insight_receipt(
                 InsightSynthesisReceipt(
@@ -1204,8 +1225,39 @@ class ForgeApp:
         initiator: str,
         confirm_receipt_ref: str,
     ) -> ReadyPromotionBatchReceipt:
-        receipt_path = self.repo_root / confirm_receipt_ref
-        if not receipt_path.exists():
+        try:
+            payload = self.read_receipt(confirm_receipt_ref)
+        except ForgeOperatorError as exc:
+            error_code = exc.error_code
+            next_step = exc.next_step
+            message = str(exc)
+            if exc.error_code == "RECEIPT_NOT_FOUND":
+                error_code = "READY_CONFIRM_NOT_FOUND"
+                next_step = "Run `forge promote-ready --dry-run` first, then pass the preview receipt to `--confirm-receipt`."
+                message = "confirm receipt not found"
+            receipt = ReadyPromotionBatchReceipt(
+                id=batch_id,
+                status="failed",
+                initiator=initiator,
+                queue_receipt_ref=None,
+                confirmed_from_receipt_ref=confirm_receipt_ref,
+                dry_run=False,
+                limit=None,
+                scanned_count=0,
+                ready_count=0,
+                targeted_count=0,
+                planned_count=0,
+                success_count=0,
+                skipped_count=0,
+                failed_count=1,
+                results=[],
+                receipt_ref=None,
+                error_code=error_code,
+                next_step=next_step,
+                message=message,
+            )
+            return self._write_ready_promotion_batch_receipt(receipt)
+        except FileNotFoundError:
             receipt = ReadyPromotionBatchReceipt(
                 id=batch_id,
                 status="failed",
@@ -1228,8 +1280,6 @@ class ForgeApp:
                 message="confirm receipt not found",
             )
             return self._write_ready_promotion_batch_receipt(receipt)
-
-        payload = json.loads(receipt_path.read_text(encoding="utf-8"))
         if not payload.get("dry_run"):
             receipt = ReadyPromotionBatchReceipt(
                 id=batch_id,
